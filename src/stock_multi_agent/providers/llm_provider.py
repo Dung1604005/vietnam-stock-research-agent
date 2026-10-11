@@ -62,15 +62,36 @@ class OllamaProvider:
     def __init__(self, model: str | None = None, base_url: str | None = None) -> None:
         self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+        self.timeout_seconds = self._env_int("OLLAMA_TIMEOUT_SECONDS", 90, 5, 120)
+        self.num_predict = self._env_int("OLLAMA_NUM_PREDICT", 512, 64, 1024)
+        self.keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "30m").strip() or "30m"
+
+    @staticmethod
+    def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(os.getenv(name, str(default)))
+        except ValueError:
+            value = default
+        return max(minimum, min(maximum, value))
+
+    def _generation_settings(self) -> dict[str, object]:
+        return {
+            "keep_alive": self.keep_alive,
+            "options": {
+                "temperature": 0,
+                "num_predict": self.num_predict,
+            },
+        }
 
     def summarize(self, system: str, facts: dict[str, object]) -> str:
         body = json.dumps({
             "model": self.model,
             "prompt": f"{system}\nFacts: {json.dumps(facts, ensure_ascii=False)}",
             "stream": False,
+            **self._generation_settings(),
         }).encode()
         request = Request(f"{self.base_url}/api/generate", data=body, headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=60) as response:  # noqa: S310 - configured local provider
+        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - configured local provider
             return str(json.loads(response.read())["response"])
 
     def parse_structured(self, system: str, payload: dict[str, object], output_model: type[T]) -> T:
@@ -80,9 +101,10 @@ class OllamaProvider:
             "prompt": f"{system}\nInput: {json.dumps(payload, ensure_ascii=False)}",
             "format": schema,
             "stream": False,
+            **self._generation_settings(),
         }).encode()
         request = Request(f"{self.base_url}/api/generate", data=body, headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=60) as response:  # noqa: S310 - configured local provider
+        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - configured local provider
             content = str(json.loads(response.read())["response"])
         return output_model.model_validate_json(content)  # type: ignore[attr-defined,no-any-return]
 

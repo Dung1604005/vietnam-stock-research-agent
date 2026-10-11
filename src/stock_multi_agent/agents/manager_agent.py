@@ -121,6 +121,12 @@ class ManagerAgent(BaseAgent):
             recommendation = Recommendation.HOLD
         else:
             recommendation = Recommendation.WATCH
+        recommendation_label = {
+            Recommendation.BUY: "MUA",
+            Recommendation.HOLD: "NẮM GIỮ",
+            Recommendation.WATCH: "THEO DÕI",
+            Recommendation.AVOID: "TRÁNH",
+        }[recommendation]
 
         base_confidence = (technical.confidence + fundamental.confidence + max(0.1, 1 - risk.risk_score / 10)) / 3
         confidence = max(0.15, min(0.9, base_confidence - 0.05 * len(conflicts)))
@@ -139,8 +145,8 @@ class ManagerAgent(BaseAgent):
             agreements=agreements,
             conflicts=conflicts,
             final_reasoning=(
-                f"Manager combined independent specialist evidence after {state.iteration} re-analysis round(s). "
-                f"Risk constraints and unresolved uncertainty lead to {recommendation.value}."
+                f"Manager đã tổng hợp bằng chứng độc lập từ các chuyên gia sau {state.iteration} vòng phân tích lại. "
+                f"Các giới hạn rủi ro và yếu tố chưa chắc chắn dẫn đến kết luận {recommendation_label}."
             ),
             evidence=evidence,
         )
@@ -161,10 +167,6 @@ class ManagerAgent(BaseAgent):
             },
             source_ids,
         )
-        if llm_review is not None and llm_review.status == "GROUNDED":
-            final = final.model_copy(update={
-                "final_reasoning": f"{final.final_reasoning} LLM synthesis: {llm_review.assessment}",
-            })
         return {
             "final_decision": final,
             "reanalysis_requested": False,

@@ -213,19 +213,28 @@ class ChatService:
         response.metadata["llm_specialist_reviews"] = [
             review.model_dump(mode="json") for review in state.llm_reviews
         ]
-        reviews = [
+        selected_reviews = [
             review for review in state.llm_reviews
-            if review.status == "GROUNDED" and (roles is None or review.agent.value in roles)
+            if roles is None or review.agent.value in roles
         ]
+        reviews = [review for review in selected_reviews if review.status == "GROUNDED"]
         if not reviews:
+            if selected_reviews:
+                response.message += (
+                    "\n\n---\n\n### Nhận định từ LLM\n"
+                    "LLM không tạo được nhận định tiếng Việt hợp lệ trong giới hạn thời gian; "
+                    "kết quả deterministic vẫn được giữ nguyên."
+                )
             return
-        sections = ["\n\n---\n\n### LLM specialist reviews"]
+        sections = ["\n\n---\n\n### Nhận định từ LLM"]
         for review in reviews:
             sections.append(f"\n**{review.agent.value.title()} Agent:** {review.assessment}")
+            if review.supporting_observations:
+                sections.append("\n**Luận cứ chính:**\n" + "\n".join(f"- {item}" for item in review.supporting_observations))
             if review.counterarguments:
-                sections.append("\nPhản biện:\n" + "\n".join(f"- {item}" for item in review.counterarguments))
+                sections.append("\n**Phản biện và rủi ro:**\n" + "\n".join(f"- {item}" for item in review.counterarguments))
             if review.missing_information:
-                sections.append("\nThông tin còn thiếu:\n" + "\n".join(f"- {item}" for item in review.missing_information))
+                sections.append("\n**Thông tin còn thiếu:**\n" + "\n".join(f"- {item}" for item in review.missing_information))
             if review.cited_source_ids:
                 sections.append("\nNguồn: " + ", ".join(f"`{item}`" for item in review.cited_source_ids))
         sections.append("\nLLM chỉ diễn giải evidence; điểm số, forecast và quyết định vẫn do pipeline deterministic kiểm soát.")

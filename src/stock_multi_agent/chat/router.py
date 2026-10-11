@@ -131,6 +131,20 @@ class IntentRouter:
         intent = query.intent
         if query.needs_clarification:
             return self._validated_plan(intent, [RouteStep.CHAT], query, "The semantic parser requires clarification before running agents.")
+        single_ticker_intents = {
+            QueryIntent.STOCK_ANALYSIS, QueryIntent.TECHNICAL_ANALYSIS,
+            QueryIntent.FUNDAMENTAL_ANALYSIS, QueryIntent.RISK_ANALYSIS,
+            QueryIntent.STOCK_CHART, QueryIntent.INDICATOR_QUERY, QueryIntent.MIXED,
+        }
+        if (intent in single_ticker_intents and not query.tickers) or (
+            intent is QueryIntent.STOCK_COMPARISON and len(query.tickers) < 2
+        ):
+            return self._validated_plan(
+                intent,
+                [RouteStep.CHAT],
+                query,
+                "Required ticker entities are missing; ask for clarification before running agents.",
+            )
         if intent == QueryIntent.FOLLOW_UP:
             intent = context.last_intent if context and context.last_intent else QueryIntent.STOCK_ANALYSIS
         routes = {

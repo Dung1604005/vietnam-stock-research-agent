@@ -5,7 +5,9 @@ from stock_multi_agent.models.state import AgentState
 
 
 class ResponseComposer:
-    DISCLAIMER = "Phân tích phục vụ học tập và minh họa hệ Multi-Agent, không phải khuyến nghị đầu tư."
+    SIGNAL_LABELS = {"BUY": "MUA", "SELL": "BÁN", "HOLD": "NẮM GIỮ", "UNKNOWN": "CHƯA XÁC ĐỊNH"}
+    RECOMMENDATION_LABELS = {"BUY": "MUA", "HOLD": "NẮM GIỮ", "WATCH": "THEO DÕI", "AVOID": "TRÁNH"}
+    RISK_LABELS = {"LOW": "THẤP", "MEDIUM": "TRUNG BÌNH", "HIGH": "CAO"}
 
     @classmethod
     def full_analysis(cls, state: AgentState) -> AssistantResponse:
@@ -19,13 +21,12 @@ class ResponseComposer:
         forecast_summary = cls._forecast_summary(state)
         message = (
             f"{forecast_summary}\n\n"
-            f"### {state.ticker} · Phân tích {state.investment_horizon}\n\n"
-            f"**Kỹ thuật:** {technical.signal.value} · {technical.score:.1f}/10  \n"
-            f"**Cơ bản:** {fundamental.signal.value} · {fundamental.score:.1f}/10  \n"
-            f"**Rủi ro:** {risk.risk_level.value} · {risk.risk_score:.1f}/10\n\n"
-            f"#### Kết luận: {final.recommendation.value}\n"
-            f"{final.final_reasoning}\n\n"
-            f"{cls.DISCLAIMER}"
+            f"### {state.ticker} · Phân tích {cls._horizon_label(state.investment_horizon)}\n\n"
+            f"**Kỹ thuật:** {cls._signal_label(technical.signal.value)} · {technical.score:.1f}/10  \n"
+            f"**Cơ bản:** {cls._signal_label(fundamental.signal.value)} · {fundamental.score:.1f}/10  \n"
+            f"**Rủi ro:** {cls.RISK_LABELS.get(risk.risk_level.value, risk.risk_level.value)} · {risk.risk_score:.1f}/10\n\n"
+            f"#### Kết luận: {cls.RECOMMENDATION_LABELS.get(final.recommendation.value, final.recommendation.value)}\n"
+            f"{final.final_reasoning}"
         )
         return AssistantResponse(
             message=message,
@@ -62,21 +63,34 @@ class ResponseComposer:
         forecast = state.price_forecast
         if forecast is None or forecast.forecast_price is None:
             return (
-                "#### Current price and next-session estimate\n"
-                f"**Last price ({latest.date.isoformat()}):** {latest.close:,.2f} VND  \n"
-                "**Next-session estimate:** unavailable because no forecast output was produced."
+                "#### Giá hiện tại và ước tính phiên kế tiếp\n"
+                f"**Giá gần nhất ({latest.date.isoformat()}):** {latest.close:,.2f} VND  \n"
+                "**Ước tính phiên kế tiếp:** chưa có vì mô hình không tạo được kết quả dự báo."
             )
         bounds = ""
         if forecast.lower_bound is not None and forecast.upper_bound is not None:
-            bounds = f" · diagnostic range {forecast.lower_bound:,.2f}–{forecast.upper_bound:,.2f} VND"
-        confidence = "not calibrated" if forecast.confidence == 0 else f"{forecast.confidence:.0%}"
+            bounds = f" · vùng dao động chẩn đoán {forecast.lower_bound:,.2f}–{forecast.upper_bound:,.2f} VND"
+        confidence = "chưa hiệu chỉnh" if forecast.confidence == 0 else f"{forecast.confidence:.0%}"
         return (
-            "#### Current price and next-session estimate\n"
-            f"**Last price ({forecast.as_of.isoformat()}):** {forecast.current_price:,.2f} VND  \n"
-            f"**Next-session estimate:** {forecast.forecast_price:,.2f} VND{bounds}  \n"
-            f"**Forecast status:** {forecast.status.value} · {forecast.model_version} · confidence {confidence}\n"
-            "The displayed estimate is separate from the BUY/HOLD/WATCH analysis policy."
+            "#### Giá hiện tại và ước tính phiên kế tiếp\n"
+            f"**Giá gần nhất ({forecast.as_of.isoformat()}):** {forecast.current_price:,.2f} VND  \n"
+            f"**Ước tính phiên kế tiếp:** {forecast.forecast_price:,.2f} VND{bounds}  \n"
+            f"**Trạng thái dự báo:** {forecast.status.value} · {forecast.model_version} · độ tin cậy {confidence}\n"
+            "Ước tính này độc lập với chính sách kết luận MUA/NẮM GIỮ/THEO DÕI."
         )
+
+    @classmethod
+    def _signal_label(cls, value: str) -> str:
+        return cls.SIGNAL_LABELS.get(value, value)
+
+    @staticmethod
+    def _horizon_label(value: str) -> str:
+        parts = value.split(maxsplit=1)
+        if len(parts) == 2 and parts[1] == "months":
+            return f"{parts[0]} tháng"
+        if len(parts) == 2 and parts[1] in {"year", "years"}:
+            return f"{parts[0]} năm"
+        return value
 
     @classmethod
     def technical(cls, state: AgentState) -> AssistantResponse:

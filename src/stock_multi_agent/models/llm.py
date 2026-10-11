@@ -13,7 +13,7 @@ class AgentLLMReview(BaseModel):
     agent: AgentName
     task: str = Field(min_length=1, max_length=200)
     status: Literal["GROUNDED", "UNAVAILABLE"]
-    assessment: str = Field(min_length=1, max_length=1000)
+    assessment: str = Field(min_length=1, max_length=1400)
     supporting_observations: list[str] = Field(default_factory=list, max_length=4)
     counterarguments: list[str] = Field(default_factory=list, max_length=4)
     missing_information: list[str] = Field(default_factory=list, max_length=4)

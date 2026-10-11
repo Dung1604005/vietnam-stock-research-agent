@@ -28,13 +28,25 @@ def render_assistant_message(response: AssistantResponse, chart_service: ChartSe
             render_chart(chart_service.render_figure(chart))
         render_knowledge_citations(response)
         render_data_freshness(response)
-        for warning in response.warnings:
-            st.warning(warning, icon="⚠️")
+        render_response_warnings(response)
         render_semantic_debug(response)
         if response.agent_trace:
             render_agent_status(response)
             render_agent_trace(response)
         render_disclaimer(response)
+
+
+def render_response_warnings(response: AssistantResponse) -> None:
+    if not response.warnings:
+        return
+    if response.response_type == ResponseType.ANALYSIS:
+        # Keep diagnostics available for audit without dominating the answer.
+        with st.expander(f"Chẩn đoán dữ liệu/mô hình ({len(response.warnings)})", expanded=False):
+            for warning in response.warnings:
+                st.caption(f"• {warning}")
+        return
+    for warning in response.warnings:
+        st.warning(warning, icon="⚠️")
 
 
 def render_knowledge_citations(response: AssistantResponse) -> None:

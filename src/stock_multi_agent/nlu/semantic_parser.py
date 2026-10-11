@@ -62,6 +62,7 @@ class HybridSemanticParser:
             semantic = self._fallback(raw, normalized, extracted, resolved, context)
         semantic = self._enforce_discovery_contract(semantic)
         semantic = self._enforce_knowledge_contract(semantic, normalized)
+        semantic = self._enforce_required_entity_contract(semantic)
         parsed = semantic.to_parsed_query().model_copy(update={
             "parser_latency_ms": round((time.perf_counter() - started_at) * 1000),
             "llm_attempted": llm_attempted,
@@ -359,6 +360,21 @@ class HybridSemanticParser:
             # contract above is satisfied.
             updates = {"intent": QueryIntent.STOCK_ANALYSIS}
         return semantic.model_copy(update=updates) if updates else semantic
+
+    @classmethod
+    def _enforce_required_entity_contract(cls, semantic: SemanticQuery) -> SemanticQuery:
+        """Do not let an LLM route ticker work without the required ticker(s)."""
+        needs_clarification, question = cls._clarification(
+            semantic.intent,
+            semantic.tickers,
+            semantic.ambiguities,
+        )
+        if not needs_clarification:
+            return semantic
+        return semantic.model_copy(update={
+            "needs_clarification": True,
+            "clarification_question": question or semantic.clarification_question,
+        })
 
     @staticmethod
     def _human_horizon(duration: str | None) -> str:
