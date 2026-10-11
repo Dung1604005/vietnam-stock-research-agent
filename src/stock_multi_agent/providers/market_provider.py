@@ -47,7 +47,7 @@ class MarketDataProvider(Protocol):
 class VnstockMarketDataProvider:
     """Real Vietnamese market data via vnstock 4.x's unified stock API."""
 
-    SCHEMA_VERSION = "vnstock-4-normalized-v5"
+    SCHEMA_VERSION = "vnstock-4-normalized-v6"
 
     def __init__(
         self,
@@ -107,17 +107,38 @@ class VnstockMarketDataProvider:
         fetched_at = datetime.now(timezone.utc)
         warnings: list[str] = []
         source_refs: list[SourceReference] = []
-        try:
-            quote = Quote(source=self.source, symbol=symbol, show_log=False)
-            quote_parameters = {"symbol": symbol, "start": start.isoformat(), "end": end.isoformat(), "interval": "1D"}
-            frame = self.executor.run(
-                lambda: quote.history(start=start.isoformat(), end=end.isoformat(), interval="1D")
-            )
-        except Exception as exc:
-            self.last_error = str(exc)
+        quote_source = self.source
+        quote_parameters: dict[str, str] = {}
+        quote_errors: list[str] = []
+        frame: Any | None = None
+        for candidate_source in self._price_sources():
+            try:
+                quote = Quote(source=candidate_source, symbol=symbol, show_log=False)
+                quote_parameters = {
+                    "source": candidate_source,
+                    "symbol": symbol,
+                    "start": start.isoformat(),
+                    "end": end.isoformat(),
+                    "interval": "1D",
+                }
+                frame = self.executor.run(
+                    lambda quote=quote: quote.history(start=start.isoformat(), end=end.isoformat(), interval="1D")
+                )
+                quote_source = candidate_source
+                break
+            except Exception as exc:
+                quote_errors.append(f"{candidate_source}: {str(exc)[:240]}")
+
+        if frame is None:
+            self.last_error = "; ".join(quote_errors)
+            tried = ", ".join(self._price_sources())
             raise MarketDataError(
-                f"Không thể tải lịch sử giá thật cho {symbol} từ {self.source}: {exc}"
-            ) from exc
+                f"Không thể tải lịch sử giá thật cho {symbol} từ các nguồn {tried}: {self.last_error}"
+            )
+        if quote_source != self.source:
+            warnings.append(
+                f"Nguồn giá chính {self.source} không khả dụng; đã dùng OHLCV từ {quote_source}."
+            )
 
         bars = self._normalize_bars(frame)
         if len(bars) < 50:
@@ -126,7 +147,7 @@ class VnstockMarketDataProvider:
             )
 
         quote_digest, quote_snapshot = self.snapshot_store.save(
-            provider=f"vnstock-{self.source}",
+            provider=f"vnstock-{quote_source}",
             data_kind=DataKind.OHLCV.value,
             ticker=symbol,
             payload=self._frame_payload(frame),
@@ -135,7 +156,7 @@ class VnstockMarketDataProvider:
         )
         source_refs.append(SourceReference(
             provider="vnstock",
-            source_id=f"{self.source}:Quote.history:{symbol}",
+            source_id=f"{quote_source}:Quote.history:{symbol}",
             data_kind=DataKind.OHLCV,
             fetched_at=fetched_at,
             as_of=bars[-1].date,
@@ -223,7 +244,7 @@ class VnstockMarketDataProvider:
         data = MarketData(
             ticker=symbol,
             instrument=instrument,
-            source=f"vnstock:{self.source}",
+            source=f"vnstock:{quote_source}",
             company_name=company_name,
             bars=bars,
             financials=financials,
@@ -274,11 +295,27 @@ class VnstockMarketDataProvider:
     def _cache_key(self, symbol: str, include_financials: bool) -> str:
         return ":".join((
             self.SCHEMA_VERSION, self.source, symbol, str(self.lookback_days), str(int(include_financials)),
+            f"price_fallbacks={','.join(self._price_sources())}",
             f"profile={int(self._feature_enabled('STOCK_AGENT_COMPANY_PROFILE_ENABLED', 'false'))}",
             f"events={int(self._feature_enabled('STOCK_AGENT_ISSUER_EVENTS_ENABLED', 'false'))}",
             f"statements={int(self._feature_enabled('STOCK_AGENT_FINANCIAL_STATEMENTS_ENABLED', 'false'))}",
             f"quarterly={int(self._feature_enabled('STOCK_AGENT_QUARTERLY_STATEMENTS_ENABLED', 'false'))}",
         ))
+
+    def _price_sources(self) -> tuple[str, ...]:
+        """Configured OHLCV sources, ordered and deduplicated.
+
+        VCI is intentionally retained as the primary source. Some cloud IP
+        ranges receive a legitimate access denial from VCI, in which case KBS
+        can provide real OHLCV data. The selected source is always recorded in
+        the resulting `MarketData` and `SourceReference`.
+        """
+        fallback_setting = os.getenv(
+            "VNSTOCK_PRICE_FALLBACK_SOURCES",
+            "KBS" if self.source == "VCI" else "",
+        )
+        candidates = [self.source, *(item.strip().upper() for item in fallback_setting.split(","))]
+        return tuple(dict.fromkeys(item for item in candidates if item))
 
     @staticmethod
     def _feature_enabled(name: str, default: str = "true") -> bool:

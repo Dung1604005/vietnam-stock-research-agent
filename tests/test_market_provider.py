@@ -6,6 +6,20 @@ import pytest
 from stock_multi_agent.providers.market_provider import MarketDataError, VnstockMarketDataProvider
 
 
+def test_vci_uses_kbs_as_default_price_fallback(monkeypatch) -> None:
+    monkeypatch.delenv("VNSTOCK_PRICE_FALLBACK_SOURCES", raising=False)
+    provider = VnstockMarketDataProvider(source="VCI", enable_cache=False)
+
+    assert provider._price_sources() == ("VCI", "KBS")
+
+
+def test_price_fallback_setting_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("VNSTOCK_PRICE_FALLBACK_SOURCES", "")
+    provider = VnstockMarketDataProvider(source="VCI", enable_cache=False)
+
+    assert provider._price_sources() == ("VCI",)
+
+
 def test_normalizes_vnstock_4_wide_ratio_schema() -> None:
     frame = pd.DataFrame(
         [
