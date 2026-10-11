@@ -11,6 +11,7 @@ from stock_multi_agent.models.research import ResearchDocumentType
 from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.chat_service import ChatService
+from stock_multi_agent.services.llm_analyst import LLMAnalystService
 from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.services.web_research import (
     DisabledCompanyNameResolver, DisabledIssuerDiscoveryProvider, DisabledWebSearchProvider, WebResearchService, WebSearchResult,
@@ -33,6 +34,18 @@ class MultiTickerProvider:
         if ticker not in self.data:
             raise MarketDataError(f"No data for {ticker}")
         return self.data[ticker]
+
+
+class FakeAnalystProvider:
+    def parse_structured(self, system, payload, output_model):
+        del system
+        return output_model.model_validate({
+            "summary": "Dữ liệu hiện tại cho thấy cần theo dõi xác nhận thêm.",
+            "bull_case": ["Tín hiệu kỹ thuật đã được cung cấp trong facts."],
+            "bear_case": ["Rủi ro trong facts vẫn cần được tôn trọng."],
+            "data_limitations": ["Không suy diễn ngoài dữ liệu được cung cấp."],
+            "cited_source_ids": [payload["allowed_source_ids"][0], "invented:source"],
+        })
 
 
 @pytest.fixture
@@ -137,6 +150,21 @@ def test_missing_financial_data_does_not_crash() -> None:
     response = service.handle("Phân tích FPT", ConversationState())
     assert response.response_type is ResponseType.ANALYSIS
     assert response.metadata["fundamental_signal"] == "UNKNOWN"
+
+
+def test_llm_analyst_adds_grounded_commentary_without_overriding_policy() -> None:
+    service = ChatService(
+        analysis_service=AnalysisService(provider=MultiTickerProvider(["FPT"])),
+        universe={"default": ["FPT"]},
+        llm_analyst=LLMAnalystService(provider=FakeAnalystProvider(), enabled=True),
+    )
+    response = service.handle("Phân tích FPT", ConversationState())
+
+    analyst = response.metadata["llm_analyst"]
+    assert analyst["status"] == "grounded_commentary"
+    assert analyst["does_not_override_deterministic_decision"] is True
+    assert analyst["cited_source_ids"] == ["test:ohlcv:FPT"]
+    assert "Nhận định bổ sung từ Local LLM" in response.message
 
 
 def test_chart_service_generates_deterministic_figure(chat_service: ChatService) -> None:

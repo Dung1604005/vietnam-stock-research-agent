@@ -25,6 +25,7 @@ from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.chart_service import ChartService
 from stock_multi_agent.services.knowledge_service import KnowledgeService
+from stock_multi_agent.services.llm_analyst import LLMAnalystService
 from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.services.research_orchestrator import ResearchOrchestrator
 from stock_multi_agent.services.screening_service import ScreeningService
@@ -44,6 +45,7 @@ class ChatService:
         web_research: WebResearchService | None = None,
         research_orchestrator: ResearchOrchestrator | None = None,
         knowledge_service: KnowledgeService | None = None,
+        llm_analyst: LLMAnalystService | None = None,
         universe: dict[str, list[str]] | None = None,
     ) -> None:
         self.analysis = analysis_service or AnalysisService()
@@ -54,6 +56,7 @@ class ChatService:
         self.web_research = web_research or WebResearchService()
         self.research_orchestrator = research_orchestrator or ResearchOrchestrator(discovery=self.web_research)
         self.knowledge = knowledge_service or KnowledgeService()
+        self.llm_analyst = llm_analyst or LLMAnalystService()
         self.indicators = TechnicalIndicatorToolkit()
         self.universes = UniverseService(universe or self._load_universe())
         self.universe = self.universes.groups()
@@ -83,6 +86,7 @@ class ChatService:
             try:
                 response = self._dispatch(query, plan.intent)
                 self._attach_secondary_outputs(response, query)
+                self.llm_analyst.enrich(response, query)
             except (MarketDataError, ValueError) as exc:
                 response = self._friendly_error(query.tickers, str(exc))
             except Exception as exc:
