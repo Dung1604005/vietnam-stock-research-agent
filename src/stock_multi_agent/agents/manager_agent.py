@@ -10,6 +10,9 @@ class ManagerAgent(BaseAgent):
     name = AgentName.MANAGER
     goal = "Plan and coordinate specialists, resolve conflict, and produce a cautious educational recommendation."
 
+    def __init__(self, llm_advisor=None) -> None:
+        self.llm_advisor = llm_advisor
+
     def plan(self, state: AgentState) -> dict[str, object]:
         plan = [
             "Acquire and validate real market/company data",
@@ -141,10 +144,35 @@ class ManagerAgent(BaseAgent):
             ),
             evidence=evidence,
         )
+        source_ids = [
+            source.source_id for source in state.market_data.source_refs
+        ] if state.market_data is not None else []
+        llm_review = self.llm_review(
+            "Synthesize specialist disagreements and explain the guarded conclusion",
+            {
+                "ticker": state.ticker,
+                "horizon": state.investment_horizon,
+                "deterministic_final_decision": final.model_dump(mode="json"),
+                "quantitative_forecast": state.price_forecast.model_dump(mode="json") if state.price_forecast else None,
+                "specialist_llm_reviews": [
+                    review.model_dump(mode="json") for review in state.llm_reviews
+                    if review.status == "GROUNDED"
+                ],
+            },
+            source_ids,
+        )
+        if llm_review is not None and llm_review.status == "GROUNDED":
+            final = final.model_copy(update={
+                "final_reasoning": f"{final.final_reasoning} LLM synthesis: {llm_review.assessment}",
+            })
         return {
             "final_decision": final,
             "reanalysis_requested": False,
             "messages": [self.message(AgentName.USER, MessageType.FINAL_DECISION, "Final educational assessment", final.model_dump(mode="json"), final.confidence)],
-            "trace": [self.event("ACT", "FINAL_DECISION", f"{recommendation.value}, confidence={confidence:.2f}")],
+            "llm_reviews": [llm_review] if llm_review is not None else [],
+            "trace": [
+                self.event("ACT", "FINAL_DECISION", f"{recommendation.value}, confidence={confidence:.2f}"),
+                *([self.event("REASON", "LLM_MANAGER_SYNTHESIS", f"Structured LLM review={llm_review.status}", "local_llm")] if llm_review is not None else []),
+            ],
             "completed_tasks": ["final_decision"],
         }

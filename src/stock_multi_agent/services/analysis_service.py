@@ -9,6 +9,7 @@ from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.models.data import PortfolioPosition
 from stock_multi_agent.providers.market_provider import MarketDataProvider, VnstockMarketDataProvider
 from stock_multi_agent.services.price_forecast import PriceForecastService
+from stock_multi_agent.services.agent_llm import AgentLLMAdvisor
 from stock_multi_agent.tools import FinancialToolkit, MarketDataTool, TechnicalIndicatorToolkit
 
 
@@ -19,15 +20,17 @@ class AnalysisService:
         self,
         provider: MarketDataProvider | None = None,
         price_forecast_service: PriceForecastService | None = None,
+        llm_advisor: AgentLLMAdvisor | None = None,
     ) -> None:
         source = os.getenv("VNSTOCK_SOURCE", "VCI")
         market_provider = provider or VnstockMarketDataProvider(source=source)
         technical_tools = TechnicalIndicatorToolkit()
-        self.data_agent = DataAgent(MarketDataTool(market_provider))
-        self.technical_agent = TechnicalAgent(technical_tools)
-        self.fundamental_agent = FundamentalAgent(FinancialToolkit())
-        self.risk_agent = RiskAgent(technical_tools)
-        self.manager_agent = ManagerAgent()
+        advisor = llm_advisor or AgentLLMAdvisor()
+        self.data_agent = DataAgent(MarketDataTool(market_provider), llm_advisor=advisor)
+        self.technical_agent = TechnicalAgent(technical_tools, llm_advisor=advisor)
+        self.fundamental_agent = FundamentalAgent(FinancialToolkit(), llm_advisor=advisor)
+        self.risk_agent = RiskAgent(technical_tools, llm_advisor=advisor)
+        self.manager_agent = ManagerAgent(llm_advisor=advisor)
         self.price_forecast_service = price_forecast_service or PriceForecastService()
         self.graph = StockAgentGraph(
             data_agent=self.data_agent,
@@ -35,6 +38,7 @@ class AnalysisService:
             fundamental_agent=self.fundamental_agent,
             risk_agent=self.risk_agent,
             manager_agent=self.manager_agent,
+            price_forecast_service=self.price_forecast_service,
         )
 
     def analyze(
@@ -52,7 +56,7 @@ class AnalysisService:
             required_data=["ohlcv", "financials", "benchmark"], portfolio_positions=portfolio_positions,
         )
         result = self.graph.invoke(initial)
-        if result.market_data is not None:
+        if result.market_data is not None and result.price_forecast is None:
             result.price_forecast = self.price_forecast_service.forecast_next_session(result.market_data)
         return result
 
@@ -127,7 +131,7 @@ class AnalysisService:
     def _merge(state: AgentState, update: dict[str, object]) -> AgentState:
         values = state.model_dump()
         for key, value in update.items():
-            if key in {"messages", "trace", "completed_tasks"}:
+            if key in {"messages", "trace", "completed_tasks", "llm_reviews"}:
                 values[key] = [*values.get(key, []), *value]  # type: ignore[arg-type]
             else:
                 values[key] = value

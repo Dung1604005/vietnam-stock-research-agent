@@ -20,7 +20,7 @@ from stock_multi_agent.models.chat import (
 from stock_multi_agent.models.messages import AgentName
 from stock_multi_agent.models.analysis import Signal
 from stock_multi_agent.models.screening import ComparisonSpec, RankingDirection, ScreenSpec, ScreenStatus
-from stock_multi_agent.models.state import TraceEvent
+from stock_multi_agent.models.state import AgentState, TraceEvent
 from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.chart_service import ChartService
@@ -170,25 +170,66 @@ class ChatService:
             raise ValueError("Tôi chưa xác định được mã cổ phiếu. Bạn có thể nêu mã, ví dụ FPT hoặc VNM.")
         ticker = query.tickers[0]
         if resolved_intent == QueryIntent.STOCK_ANALYSIS:
-            return ResponseComposer.full_analysis(self.analysis.analyze(ticker, query.investment_horizon))
+            state = self.analysis.analyze(ticker, query.investment_horizon)
+            response = ResponseComposer.full_analysis(state)
+            self._attach_specialist_llm_reviews(response, state)
+            return response
         if resolved_intent == QueryIntent.TECHNICAL_ANALYSIS:
-            return ResponseComposer.technical(
-                self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
-            )
+            state = self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
+            response = ResponseComposer.technical(state)
+            self._attach_specialist_llm_reviews(response, state, {"technical"})
+            return response
         if resolved_intent == QueryIntent.FUNDAMENTAL_ANALYSIS:
-            return ResponseComposer.fundamental(self.analysis.analyze_fundamental(ticker, query.investment_horizon))
+            state = self.analysis.analyze_fundamental(ticker, query.investment_horizon)
+            response = ResponseComposer.fundamental(state)
+            self._attach_specialist_llm_reviews(response, state, {"fundamental"})
+            return response
         if resolved_intent == QueryIntent.INDICATOR_QUERY:
             fundamental = {"PE", "PB", "ROE", "ROA", "EPS"}
             if fundamental.intersection(query.requested_indicators):
-                return ResponseComposer.fundamental(self.analysis.analyze_fundamental(ticker, query.investment_horizon))
-            return ResponseComposer.technical(
-                self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
-            )
+                state = self.analysis.analyze_fundamental(ticker, query.investment_horizon)
+                response = ResponseComposer.fundamental(state)
+                self._attach_specialist_llm_reviews(response, state, {"fundamental"})
+                return response
+            state = self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
+            response = ResponseComposer.technical(state)
+            self._attach_specialist_llm_reviews(response, state, {"technical"})
+            return response
         if resolved_intent == QueryIntent.RISK_ANALYSIS:
-            return ResponseComposer.risk(self.analysis.analyze_risk(ticker, query.investment_horizon))
+            state = self.analysis.analyze_risk(ticker, query.investment_horizon)
+            response = ResponseComposer.risk(state)
+            self._attach_specialist_llm_reviews(response, state, {"risk"})
+            return response
         if resolved_intent == QueryIntent.STOCK_CHART:
             return self._chart(query)
         return self._help_response()
+
+    @staticmethod
+    def _attach_specialist_llm_reviews(
+        response: AssistantResponse,
+        state: AgentState,
+        roles: set[str] | None = None,
+    ) -> None:
+        response.metadata["llm_specialist_reviews"] = [
+            review.model_dump(mode="json") for review in state.llm_reviews
+        ]
+        reviews = [
+            review for review in state.llm_reviews
+            if review.status == "GROUNDED" and (roles is None or review.agent.value in roles)
+        ]
+        if not reviews:
+            return
+        sections = ["\n\n---\n\n### LLM specialist reviews"]
+        for review in reviews:
+            sections.append(f"\n**{review.agent.value.title()} Agent:** {review.assessment}")
+            if review.counterarguments:
+                sections.append("\nPhản biện:\n" + "\n".join(f"- {item}" for item in review.counterarguments))
+            if review.missing_information:
+                sections.append("\nThông tin còn thiếu:\n" + "\n".join(f"- {item}" for item in review.missing_information))
+            if review.cited_source_ids:
+                sections.append("\nNguồn: " + ", ".join(f"`{item}`" for item in review.cited_source_ids))
+        sections.append("\nLLM chỉ diễn giải evidence; điểm số, forecast và quyết định vẫn do pipeline deterministic kiểm soát.")
+        response.message += "\n".join(sections)
 
     def _mixed_knowledge_analysis(self, query: ParsedQuery) -> AssistantResponse:
         if not query.tickers:

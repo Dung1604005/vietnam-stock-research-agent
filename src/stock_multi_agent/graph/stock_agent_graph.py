@@ -4,6 +4,7 @@ from langgraph.graph import END, START, StateGraph
 
 from stock_multi_agent.agents import DataAgent, FundamentalAgent, ManagerAgent, RiskAgent, TechnicalAgent
 from stock_multi_agent.models.state import AgentState
+from stock_multi_agent.services.price_forecast import PriceForecastService
 
 
 class StockAgentGraph:
@@ -16,18 +17,21 @@ class StockAgentGraph:
         fundamental_agent: FundamentalAgent,
         risk_agent: RiskAgent,
         manager_agent: ManagerAgent,
+        price_forecast_service: PriceForecastService,
     ) -> None:
         self.data_agent = data_agent
         self.technical_agent = technical_agent
         self.fundamental_agent = fundamental_agent
         self.risk_agent = risk_agent
         self.manager_agent = manager_agent
+        self.price_forecast_service = price_forecast_service
         self.compiled = self._build().compile()
 
     def _build(self) -> StateGraph:
         graph = StateGraph(AgentState)
         graph.add_node("manager_plan", self.manager_agent.plan)
         graph.add_node("data", self.data_agent.run)
+        graph.add_node("forecast", self._forecast)
         graph.add_node("dispatch_specialists", self.manager_agent.dispatch_specialists)
         graph.add_node("technical", lambda state: self.technical_agent.run(state, extended=False))
         graph.add_node("fundamental", self.fundamental_agent.run)
@@ -40,7 +44,8 @@ class StockAgentGraph:
 
         graph.add_edge(START, "manager_plan")
         graph.add_edge("manager_plan", "data")
-        graph.add_edge("data", "dispatch_specialists")
+        graph.add_edge("data", "forecast")
+        graph.add_edge("forecast", "dispatch_specialists")
         graph.add_edge("dispatch_specialists", "technical")
         graph.add_edge("dispatch_specialists", "fundamental")
         graph.add_edge(["technical", "fundamental"], "dispatch_risk")
@@ -59,4 +64,16 @@ class StockAgentGraph:
     def invoke(self, state: AgentState) -> AgentState:
         output = self.compiled.invoke(state)
         return output if isinstance(output, AgentState) else AgentState.model_validate(output)
+
+    def _forecast(self, state: AgentState) -> dict[str, object]:
+        if state.market_data is None:
+            return {}
+        forecast = self.price_forecast_service.forecast_next_session(state.market_data)
+        return {
+            "price_forecast": forecast,
+            "trace": [self.data_agent.event(
+                "ACT", "CALL_FORECAST_TOOL", f"Forecast status={forecast.status.value}", "price_forecast",
+            )],
+            "completed_tasks": ["price_forecast"],
+        }
 

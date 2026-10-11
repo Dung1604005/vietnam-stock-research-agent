@@ -19,8 +19,9 @@ class TechnicalAgent(BaseAgent):
     name = AgentName.TECHNICAL
     goal = "Assess price trend with a versioned indicator profile for the requested horizon."
 
-    def __init__(self, toolkit: TechnicalIndicatorToolkit) -> None:
+    def __init__(self, toolkit: TechnicalIndicatorToolkit, llm_advisor=None) -> None:
         self.tools = toolkit
+        self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState, extended: bool = False) -> dict[str, object]:
         if state.market_data is None:
@@ -49,6 +50,23 @@ class TechnicalAgent(BaseAgent):
             analysis, extra_traces = self._run_default(state, closes, volumes, timeframe, profile)
             traces.extend(extra_traces)
 
+        source_ids = [source.source_id for source in state.market_data.source_refs]
+        llm_review = self.llm_review(
+            "Interpret indicator confluence, contradictions, and regime uncertainty",
+            {
+                "ticker": state.ticker,
+                "horizon": state.investment_horizon,
+                "extended_reanalysis": extended,
+                "deterministic_result": analysis.model_dump(mode="json"),
+                "quantitative_forecast": state.price_forecast.model_dump(mode="json") if state.price_forecast else None,
+                "data_warnings": state.market_data.warnings,
+            },
+            source_ids,
+        )
+        if llm_review is not None:
+            traces.append(self.event(
+                "REASON", "LLM_TECHNICAL_REVIEW", f"Structured LLM review={llm_review.status}", "local_llm",
+            ))
         message = self.message(
             AgentName.MANAGER, MessageType.RESULT,
             "Technical re-analysis complete" if extended else "Technical analysis complete",
@@ -58,6 +76,7 @@ class TechnicalAgent(BaseAgent):
         return {
             "technical_result": analysis,
             "messages": [message],
+            "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": traces,
             "completed_tasks": ["technical_reanalysis" if extended else "technical_analysis"],
         }

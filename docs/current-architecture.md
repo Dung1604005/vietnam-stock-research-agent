@@ -6,7 +6,9 @@ Tài liệu này mô tả repository sau cập nhật Knowledge Base ngày 11/10
 
 Hệ thống hiện là một ứng dụng nghiên cứu chứng khoán Việt Nam chạy cục bộ, có giao diện chat Streamlit, NLU hybrid, dữ liệu thật từ `vnstock`, một workflow LangGraph cho phân tích đầy đủ và các route rút gọn cho câu hỏi chuyên biệt. Các mô hình Pydantic được dùng làm contract giữa parser, service, graph, agent và UI.
 
-Phần lớn “reasoning” tài chính hiện là các công thức và ngưỡng deterministic. OpenAI/Ollama chỉ có thể tham gia bước semantic parsing khi được cấu hình; các agent phân tích và phần tổng hợp kết quả hiện không gọi LLM. Mặc định `STOCK_AGENT_LLM_PROVIDER=mock`, nên luồng mặc định không phát sinh phí LLM.
+Phần định lượng tài chính vẫn dùng công thức và ngưỡng deterministic. Khi được cấu hình, OpenAI/Ollama có thể tham gia semantic parsing, specialist review và final commentary; mặc định `STOCK_AGENT_LLM_PROVIDER=mock` nên luồng mặc định không phát sinh phí LLM.
+
+Khi bật `STOCK_AGENT_LLM_SPECIALISTS_ENABLED`, Data, Technical, Fundamental, Risk và Manager có thể gọi chung một structured LLM advisor. Các review được lưu riêng trong `AgentState.llm_reviews`; chúng diễn giải, phản biện và chỉ ra dữ liệu thiếu nhưng không thay đổi output định lượng. Forecast chạy sau Data và trước hai specialist song song để Technical, Risk và Manager nhìn thấy cùng một dự báo. Chế độ mặc định vẫn tắt để test, CI và deployment không phụ thuộc LLM.
 
 Hệ thống không có broker integration, không có action đặt lệnh và không tự động giao dịch.
 

@@ -16,6 +16,7 @@ from stock_multi_agent.models.analysis import (
 from stock_multi_agent.models.data import PortfolioPosition
 from stock_multi_agent.models.forecast import PriceForecast
 from stock_multi_agent.models.messages import AgentMessage, AgentName
+from stock_multi_agent.models.llm import AgentLLMReview
 
 
 class TraceEvent(BaseModel):
@@ -43,6 +44,7 @@ class AgentState(BaseModel):
     fundamental_result: FundamentalAnalysis | None = None
     risk_result: RiskAnalysis | None = None
     messages: Annotated[list[AgentMessage], operator.add] = Field(default_factory=list)
+    llm_reviews: Annotated[list[AgentLLMReview], operator.add] = Field(default_factory=list)
     trace: Annotated[list[TraceEvent], operator.add] = Field(default_factory=list)
     current_plan: list[str] = Field(default_factory=list)
     completed_tasks: Annotated[list[str], operator.add] = Field(default_factory=list)

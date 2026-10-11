@@ -12,6 +12,7 @@ from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.chat_service import ChatService
 from stock_multi_agent.services.llm_analyst import LLMAnalystService
+from stock_multi_agent.services.agent_llm import AgentLLMAdvisor
 from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.services.web_research import (
     DisabledCompanyNameResolver, DisabledIssuerDiscoveryProvider, DisabledWebSearchProvider, WebResearchService, WebSearchResult,
@@ -45,6 +46,23 @@ class FakeAnalystProvider:
             "bear_case": ["Rủi ro trong facts vẫn cần được tôn trọng."],
             "data_limitations": ["Không suy diễn ngoài dữ liệu được cung cấp."],
             "cited_source_ids": [payload["allowed_source_ids"][0], "invented:source"],
+        })
+
+
+class FakeSpecialistProvider:
+    def __init__(self) -> None:
+        self.payloads = []
+
+    def parse_structured(self, system, payload, output_model):
+        del system
+        self.payloads.append(payload)
+        citations = payload["allowed_source_ids"][:1] + ["invented:source"]
+        return output_model.model_validate({
+            "assessment": f"Đánh giá có cấu trúc cho {payload['specialist_role']}.",
+            "supporting_observations": ["Chỉ sử dụng facts đã cung cấp."],
+            "counterarguments": ["Kết quả còn phụ thuộc chất lượng dữ liệu."],
+            "missing_information": ["Không suy diễn dữ liệu chưa có."],
+            "cited_source_ids": citations,
         })
 
 
@@ -165,6 +183,29 @@ def test_llm_analyst_adds_grounded_commentary_without_overriding_policy() -> Non
     assert analyst["does_not_override_deterministic_decision"] is True
     assert analyst["cited_source_ids"] == ["test:ohlcv:FPT"]
     assert "Nhận định bổ sung từ Local LLM" in response.message
+
+
+def test_specialist_agents_use_structured_llm_reviews_without_overriding_decision() -> None:
+    provider = FakeSpecialistProvider()
+    advisor = AgentLLMAdvisor(provider=provider, enabled=True)
+    service = ChatService(
+        analysis_service=AnalysisService(
+            provider=MultiTickerProvider(["FPT", "VNINDEX"]),
+            llm_advisor=advisor,
+        ),
+        universe={"default": ["FPT"]},
+    )
+    response = service.handle("Phân tích FPT", ConversationState())
+
+    reviews = response.metadata["llm_specialist_reviews"]
+    roles = {item["agent"] for item in reviews if item["status"] == "GROUNDED"}
+    assert roles == {"data", "technical", "fundamental", "risk", "manager"}
+    assert all("invented:source" not in item["cited_source_ids"] for item in reviews)
+    assert response.metadata["recommendation"] in {"BUY", "HOLD", "WATCH", "AVOID"}
+    assert all(item["controls_numeric_output"] is False for item in reviews)
+    assert "LLM specialist reviews" in response.message
+    downstream = [item for item in provider.payloads if item["specialist_role"] in {"technical", "risk", "manager"}]
+    assert all(item["facts"]["quantitative_forecast"] is not None for item in downstream)
 
 
 def test_chart_service_generates_deterministic_figure(chat_service: ChatService) -> None:

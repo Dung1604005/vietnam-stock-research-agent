@@ -11,8 +11,9 @@ class FundamentalAgent(BaseAgent):
     name = AgentName.FUNDAMENTAL
     goal = "Assess business quality and valuation independently from price trends."
 
-    def __init__(self, toolkit: FinancialToolkit) -> None:
+    def __init__(self, toolkit: FinancialToolkit, llm_advisor=None) -> None:
         self.tools = toolkit
+        self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState) -> dict[str, object]:
         if state.market_data is None:
@@ -169,10 +170,27 @@ class FundamentalAgent(BaseAgent):
             )
             traces.append(self.event("REASON", "SCORE_FUNDAMENTALS", f"Independent fundamental score={score:.1f}/10"))
 
+        source_ids = [source.source_id for source in state.market_data.source_refs]
+        llm_review = self.llm_review(
+            "Interpret business quality, valuation tensions, and missing fundamental evidence",
+            {
+                "ticker": state.ticker,
+                "horizon": state.investment_horizon,
+                "deterministic_result": result.model_dump(mode="json"),
+                "quality_status": state.market_data.quality_report.status.value,
+                "data_warnings": state.market_data.warnings,
+            },
+            source_ids,
+        )
+        if llm_review is not None:
+            traces.append(self.event(
+                "REASON", "LLM_FUNDAMENTAL_REVIEW", f"Structured LLM review={llm_review.status}", "local_llm",
+            ))
         traces.append(self.event("ACT", "SEND_RESULT", f"Fundamental signal={result.signal.value}, confidence={result.confidence:.2f}"))
         return {
             "fundamental_result": result,
             "messages": [self.message(AgentName.MANAGER, MessageType.RESULT, "Fundamental analysis complete", result.model_dump(mode="json"), result.confidence)],
+            "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": traces,
             "completed_tasks": ["fundamental_analysis"],
         }

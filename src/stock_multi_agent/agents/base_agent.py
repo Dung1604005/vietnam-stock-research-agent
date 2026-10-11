@@ -9,6 +9,7 @@ from stock_multi_agent.models.state import TraceEvent
 class BaseAgent:
     name: AgentName
     goal: str
+    llm_advisor: Any | None = None
 
     def message(
         self,
@@ -29,4 +30,9 @@ class BaseAgent:
 
     def event(self, phase: str, action: str, detail: str, tool: str | None = None) -> TraceEvent:
         return TraceEvent(agent=self.name, phase=phase, action=action, detail=detail, tool=tool)
+
+    def llm_review(self, task: str, facts: dict[str, Any], source_ids: list[str]):
+        if self.llm_advisor is None:
+            return None
+        return self.llm_advisor.review(self.name, task, facts, source_ids)
 

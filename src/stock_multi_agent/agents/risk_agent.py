@@ -14,8 +14,9 @@ class RiskAgent(BaseAgent):
     name = AgentName.RISK
     goal = "Challenge optimistic conclusions and prevent unjustified confidence."
 
-    def __init__(self, toolkit: TechnicalIndicatorToolkit) -> None:
+    def __init__(self, toolkit: TechnicalIndicatorToolkit, llm_advisor=None) -> None:
         self.tools = toolkit
+        self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState) -> dict[str, object]:
         if state.market_data is None or state.technical_result is None or state.fundamental_result is None:
@@ -171,14 +172,32 @@ class RiskAgent(BaseAgent):
             sections=sections,
             confidence=round(max(0.1, 0.8 - 0.08 * len(quality_issues) - (0.15 if fundamental.signal is Signal.UNKNOWN else 0)), 2),
         )
+        llm_review = self.llm_review(
+            "Adversarially challenge specialist conclusions and identify unmeasured risks",
+            {
+                "ticker": state.ticker,
+                "horizon": state.investment_horizon,
+                "technical_result": technical.model_dump(mode="json"),
+                "fundamental_result": fundamental.model_dump(mode="json"),
+                "deterministic_risk_result": result.model_dump(mode="json"),
+                "quantitative_forecast": state.price_forecast.model_dump(mode="json") if state.price_forecast else None,
+                "prior_llm_reviews": [
+                    review.model_dump(mode="json") for review in state.llm_reviews
+                    if review.status == "GROUNDED"
+                ],
+            },
+            source_ids,
+        )
         return {
             "risk_result": result,
             "messages": [self.message(AgentName.MANAGER, MessageType.CRITIQUE, "Risk critique complete", result.model_dump(mode="json"), max(0.1, 1 - score / 12))],
+            "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": [
                 self.event("OBSERVE", "READ_SPECIALIST_RESULTS", f"Technical={technical.signal.value}; Fundamental={fundamental.signal.value}"),
                 self.event("ACT", "CALL_TOOL", "Measure recent volatility", "annualized_volatility"),
                 self.event("ACT", "CALL_TOOL", "Measure one-year peak-to-trough loss", "max_drawdown"),
                 self.event("ACT", "SEND_CRITIQUE", f"Risk={level.value}; veto={veto}"),
+                *([self.event("REASON", "LLM_RISK_REVIEW", f"Structured LLM review={llm_review.status}", "local_llm")] if llm_review is not None else []),
             ],
             "completed_tasks": ["risk_reanalysis" if state.iteration else "risk_analysis"],
         }

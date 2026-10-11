@@ -12,8 +12,9 @@ class DataAgent(BaseAgent):
     name = AgentName.DATA
     goal = "Acquire, validate, and normalize real stock data without making a recommendation."
 
-    def __init__(self, market_tool: MarketDataTool) -> None:
+    def __init__(self, market_tool: MarketDataTool, llm_advisor=None) -> None:
         self.market_tool = market_tool
+        self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState) -> dict[str, object]:
         observation = self.event("OBSERVE", "READ_REQUEST", f"Ticker={state.ticker}; horizon={state.investment_horizon}")
@@ -60,10 +61,30 @@ class DataAgent(BaseAgent):
                 * (0.8 if data.quality_report.status.value == "WARN" else 1.0)
             ),
         )
+        source_ids = [source.source_id for source in data.source_refs]
+        llm_review = self.llm_review(
+            "Audit data sufficiency, provenance, and visible limitations",
+            {
+                "ticker": data.ticker,
+                "source": data.source,
+                "sessions": len(data.bars),
+                "financial_metric_count": data.financials.available_count(),
+                "as_of": data.as_of.isoformat() if data.as_of else None,
+                "quality_status": data.quality_report.status.value,
+                "quality_issues": [issue.message for issue in data.quality_report.issues],
+                "warnings": data.warnings,
+            },
+            source_ids,
+        )
+        if llm_review is not None:
+            benchmark_trace.append(self.event(
+                "REASON", "LLM_DATA_AUDIT", f"Structured LLM review={llm_review.status}", "local_llm",
+            ))
         return {
             "market_data": data,
             "benchmark_data": benchmark_data,
             "messages": [result],
+            "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": [
                 observation,
                 call,
