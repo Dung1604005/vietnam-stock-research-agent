@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,14 @@ class _StructuredReview(BaseModel):
 
 class _CompactVietnameseReview(BaseModel):
     lines: list[str] = Field(min_length=8, max_length=8)
+    cited_source_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+class _TechnicalIndicatorPlan(BaseModel):
+    selected_indicators: list[
+        Literal["BOLLINGER_BANDS", "MAX_DRAWDOWN", "SUPPORT_RESISTANCE"]
+    ] = Field(min_length=1, max_length=2)
+    rationale: str = Field(min_length=1, max_length=240)
     cited_source_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
@@ -109,6 +117,41 @@ CHƯA XÁC ĐỊNH và drawdown là mức sụt giảm. Phản hồi đúng JSON
             missing_information=raw.missing_information,
             cited_source_ids=[item for item in raw.cited_source_ids if item in allowed],
         )
+
+    def plan_technical_indicators(
+        self,
+        facts: dict[str, Any],
+        allowed_source_ids: list[str],
+    ) -> _TechnicalIndicatorPlan | None:
+        """Let the LLM choose tools; Python remains responsible for every calculation."""
+        if not self.enabled or self.provider is None or AgentName.TECHNICAL.value not in self.roles:
+            return None
+        system = """Bạn là bộ lập kế hoạch công cụ cho Technical Agent chứng khoán Việt Nam.
+Đọc dữ liệu tóm tắt từ Data Agent và dự báo định lượng, sau đó chọn 1 hoặc 2 phép kiểm tra
+bổ sung phù hợp nhất trong BOLLINGER_BANDS, MAX_DRAWDOWN, SUPPORT_RESISTANCE. Không tự tính
+giá trị chỉ báo, không đưa ra tín hiệu MUA/BÁN và không viết phân tích dài. Rationale chỉ gồm
+một câu tiếng Việt ngắn. Chỉ dùng mã nguồn nằm trong allowed_source_ids và trả đúng JSON schema."""
+        payload = {
+            "task": "Chọn phép tính kỹ thuật bổ sung",
+            "facts": facts,
+            "allowed_source_ids": list(dict.fromkeys(allowed_source_ids)),
+        }
+        try:
+            raw = self.provider.parse_structured(system, payload, _TechnicalIndicatorPlan)
+        except Exception:
+            return None
+        selected = list(dict.fromkeys(raw.selected_indicators))[:2]
+        if not selected:
+            return None
+        rationale = raw.rationale.strip()
+        if self._CJK_PATTERN.search(rationale) or not self._VIETNAMESE_PATTERN.search(rationale):
+            rationale = "LLM đã chọn các phép kiểm tra bổ sung dựa trên dữ liệu thị trường và dự báo hiện có."
+        allowed = set(allowed_source_ids)
+        return raw.model_copy(update={
+            "selected_indicators": selected,
+            "rationale": rationale,
+            "cited_source_ids": [item for item in raw.cited_source_ids if item in allowed],
+        })
 
     def _compact_retry(self, payload: dict[str, Any]) -> _StructuredReview:
         prompt = self.SYSTEM_PROMPT + """

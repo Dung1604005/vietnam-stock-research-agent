@@ -58,6 +58,12 @@ class FakeSpecialistProvider:
         del system
         self.payloads.append(payload)
         citations = payload["allowed_source_ids"][:1] + ["invented:source"]
+        if output_model.__name__ == "_TechnicalIndicatorPlan":
+            return output_model.model_validate({
+                "selected_indicators": ["MAX_DRAWDOWN", "SUPPORT_RESISTANCE"],
+                "rationale": "Cần đo mức giảm và vùng giá quan trọng từ dữ liệu hiện có.",
+                "cited_source_ids": citations,
+            })
         return output_model.model_validate({
             "assessment": f"Đánh giá có cấu trúc cho {payload['specialist_role']}.",
             "supporting_observations": [
@@ -212,8 +218,11 @@ def test_specialist_agents_use_structured_llm_reviews_without_overriding_decisio
     assert response.metadata["recommendation"] in {"BUY", "HOLD", "WATCH", "AVOID"}
     assert all(item["controls_numeric_output"] is False for item in reviews)
     assert "Nhận định từ LLM" in response.message
-    downstream = [item for item in provider.payloads if item["specialist_role"] in {"technical", "risk", "manager"}]
+    downstream = [item for item in provider.payloads if item.get("specialist_role") in {"risk", "manager"}]
     assert all(item["facts"]["quantitative_forecast"] is not None for item in downstream)
+    technical_plans = [item for item in provider.payloads if item.get("task") == "Chọn phép tính kỹ thuật bổ sung"]
+    assert technical_plans
+    assert technical_plans[0]["facts"]["forecast_agent"] is not None
 
 
 def test_specialist_llm_retries_non_vietnamese_output_once() -> None:

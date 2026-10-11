@@ -8,7 +8,7 @@ Hệ thống hiện là một ứng dụng nghiên cứu chứng khoán Việt N
 
 Phần định lượng tài chính vẫn dùng công thức và ngưỡng deterministic. Khi được cấu hình, OpenAI/Ollama có thể tham gia semantic parsing, specialist review và final commentary; mặc định `STOCK_AGENT_LLM_PROVIDER=mock` nên luồng mặc định không phát sinh phí LLM.
 
-Khi bật `STOCK_AGENT_LLM_SPECIALISTS_ENABLED`, Data, Technical, Fundamental, Risk và Manager có thể gọi chung một structured LLM advisor. Các review được lưu riêng trong `AgentState.llm_reviews`; chúng diễn giải, phản biện và chỉ ra dữ liệu thiếu nhưng không thay đổi output định lượng. Forecast chạy sau Data và trước hai specialist song song để Technical, Risk và Manager nhìn thấy cùng một dự báo. Chế độ mặc định vẫn tắt để test, CI và deployment không phụ thuộc LLM.
+Khi bật `STOCK_AGENT_LLM_SPECIALISTS_ENABLED`, các vai trò được chọn có thể gọi structured LLM advisor. Trong cấu hình local hiện tại, chỉ Technical dùng LLM làm bộ lập kế hoạch công cụ: LLM đọc tóm tắt từ Data Agent và forecast để chọn tối đa hai kiểm tra bổ sung, còn Python tính toàn bộ giá trị chỉ báo. Kế hoạch được lưu trong `AgentState.llm_reviews` và được tái sử dụng nếu graph yêu cầu phân tích lại; Manager không gọi LLM và vẫn quyết định bằng policy deterministic.
 
 Hệ thống không có broker integration, không có action đặt lệnh và không tự động giao dịch.
 

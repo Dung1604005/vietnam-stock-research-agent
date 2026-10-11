@@ -4,6 +4,7 @@ import os
 
 from stock_multi_agent.agents.base_agent import BaseAgent
 from stock_multi_agent.models.analysis import EvidenceItem, PriceAdjustment, Signal, TechnicalAnalysis
+from stock_multi_agent.models.llm import AgentLLMReview
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState, TraceEvent
 from stock_multi_agent.tools.technical_indicators import HorizonProfile, LONG_HORIZON, TechnicalIndicatorToolkit
@@ -34,6 +35,11 @@ class TechnicalAgent(BaseAgent):
             "OBSERVE", "READ_MARKET_DATA", f"Observe {len(closes)} OHLCV bars; profile={profile.name}",
         )]
         required_history = max(50, profile.slow_window + profile.macd_signal)
+        source_ids = [source.source_id for source in state.market_data.source_refs]
+        indicator_plan = self._existing_indicator_plan(state) if extended else None
+        if indicator_plan is None and not state.requested_indicators:
+            indicator_plan = self._request_indicator_plan(state, source_ids)
+        selected_checks = indicator_plan[0] if indicator_plan is not None else []
         if len(closes) < required_history:
             analysis = TechnicalAnalysis(
                 signal=Signal.UNKNOWN, score=5, confidence=0.1,
@@ -47,25 +53,35 @@ class TechnicalAgent(BaseAgent):
             analysis, extra_traces = self._run_requested_indicators(state, closes, volumes, state.requested_indicators, timeframe, profile)
             traces.extend(extra_traces)
         else:
-            analysis, extra_traces = self._run_default(state, closes, volumes, timeframe, profile)
+            analysis, extra_traces = self._run_default(
+                state, closes, volumes, timeframe, profile, selected_checks,
+            )
             traces.extend(extra_traces)
 
-        source_ids = [source.source_id for source in state.market_data.source_refs]
-        llm_review = self.llm_review(
-            "Diễn giải sự đồng thuận và mâu thuẫn giữa các chỉ báo kỹ thuật, đồng thời đánh giá độ bất định của trạng thái thị trường",
-            {
-                "ticker": state.ticker,
-                "horizon": state.investment_horizon,
-                "extended_reanalysis": extended,
-                "deterministic_result": analysis.model_dump(mode="json"),
-                "quantitative_forecast": state.price_forecast.model_dump(mode="json") if state.price_forecast else None,
-                "data_warnings": state.market_data.warnings,
-            },
-            source_ids,
-        )
-        if llm_review is not None:
+        llm_review = None
+        if indicator_plan is not None and not extended:
+            selected, rationale, cited_source_ids = indicator_plan
+            display_labels = {
+                "BOLLINGER_BANDS": "dải Bollinger",
+                "MAX_DRAWDOWN": "mức sụt giảm tối đa",
+                "SUPPORT_RESISTANCE": "hỗ trợ/kháng cự",
+            }
+            selected_display = ", ".join(display_labels[item] for item in selected)
+            llm_review = AgentLLMReview(
+                agent=self.name,
+                task="Chọn chỉ báo kỹ thuật bổ sung",
+                status="GROUNDED",
+                assessment=(
+                    f"LLM chọn tính bổ sung {selected_display}; Python thực hiện phép tính trên dữ liệu nguồn. "
+                    f"{rationale}"
+                ),
+                supporting_observations=selected,
+                cited_source_ids=cited_source_ids,
+                model_role="indicator_planner",
+                controls_numeric_output=False,
+            )
             traces.append(self.event(
-                "REASON", "LLM_TECHNICAL_REVIEW", f"Structured LLM review={llm_review.status}", "local_llm",
+                "PLAN", "LLM_INDICATOR_PLAN", f"Selected {', '.join(selected)}; calculations executed by Python", "local_llm",
             ))
         message = self.message(
             AgentName.MANAGER, MessageType.RESULT,
@@ -88,6 +104,7 @@ class TechnicalAgent(BaseAgent):
         volumes: list[float],
         timeframe: str,
         profile: HorizonProfile,
+        selected_checks: list[str] | None = None,
     ) -> tuple[TechnicalAnalysis, list[TraceEvent]]:
         selected = [
             f"SMA{profile.fast_window}", f"SMA{profile.slow_window}", f"RSI{profile.rsi_period}",
@@ -117,6 +134,34 @@ class TechnicalAgent(BaseAgent):
             self._evidence(state, "Liquidity", f"Average traded value {average_traded_value:,.0f} VND; volume ratio {volume_ratio:.2f}", ["bars.close", "bars.volume"]),
             self._evidence(state, "Trailing return", f"{trailing_return:.1%} over {return_window} sessions; regime={regime}", ["bars.close"]),
         ]
+        selected_checks = selected_checks or []
+        for check in selected_checks:
+            if check == "BOLLINGER_BANDS":
+                bands = self.tools.bollinger_bands(closes, min(20, len(closes)))
+                evidence.append(self._evidence(
+                    state,
+                    "LLM-selected Bollinger Bands",
+                    f"Lower {bands['lower']:.2f}; middle {bands['middle']:.2f}; upper {bands['upper']:.2f}",
+                    ["bars.close"],
+                ))
+                selected.append("Bollinger Bands")
+            elif check == "MAX_DRAWDOWN":
+                drawdown = self.tools.max_drawdown(closes[-min(len(closes), profile.return_window):])
+                evidence.append(self._evidence(
+                    state, "LLM-selected max drawdown", f"{drawdown:.1%}", ["bars.close"],
+                ))
+                selected.append("Max drawdown")
+                if drawdown > 0.3:
+                    risks.append("Maximum drawdown over the selected horizon exceeds 30%")
+            elif check == "SUPPORT_RESISTANCE":
+                levels = self.tools.support_resistance(closes, min(60, len(closes)))
+                evidence.append(self._evidence(
+                    state,
+                    "LLM-selected support/resistance",
+                    f"Support {levels['support']:.2f}; resistance {levels['resistance']:.2f}",
+                    ["bars.close"],
+                ))
+                selected.append("Support/resistance")
 
         contributions["price_vs_fast_sma"] = 1.0 if closes[-1] > sma_fast else -1.0
         contributions["fast_vs_slow_sma"] = 1.25 if sma_fast > sma_slow else -1.25
@@ -193,6 +238,37 @@ class TechnicalAgent(BaseAgent):
             timeframe=timeframe, horizon_profile=profile.name,
             feature_contributions=contributions, diagnostics=diagnostics,
         ), traces
+
+    def _request_indicator_plan(
+        self,
+        state: AgentState,
+        source_ids: list[str],
+    ) -> tuple[list[str], str, list[str]] | None:
+        if self.llm_advisor is None:
+            return None
+        bars = state.market_data.bars if state.market_data is not None else []
+        facts = {
+            "ticker": state.ticker,
+            "horizon": state.investment_horizon,
+            "data_agent": {
+                "bar_count": len(bars),
+                "latest_close": bars[-1].close if bars else None,
+                "as_of": state.market_data.as_of.isoformat() if state.market_data else None,
+                "warnings": state.market_data.warnings if state.market_data else [],
+            },
+            "forecast_agent": state.price_forecast.model_dump(mode="json") if state.price_forecast else None,
+        }
+        plan = self.llm_advisor.plan_technical_indicators(facts, source_ids)
+        if plan is None:
+            return None
+        return plan.selected_indicators, plan.rationale, plan.cited_source_ids
+
+    @staticmethod
+    def _existing_indicator_plan(state: AgentState) -> tuple[list[str], str, list[str]] | None:
+        for review in reversed(state.llm_reviews):
+            if review.agent is AgentName.TECHNICAL and review.model_role == "indicator_planner":
+                return list(review.supporting_observations), review.assessment, list(review.cited_source_ids)
+        return None
 
     def _run_requested_indicators(
         self,

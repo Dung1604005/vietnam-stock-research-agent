@@ -229,6 +229,8 @@ class ChatService:
         sections = ["\n\n---\n\n### Nhận định từ LLM"]
         for review in reviews:
             sections.append(f"\n**{review.agent.value.title()} Agent:** {review.assessment}")
+            if review.model_role == "indicator_planner":
+                continue
             if review.supporting_observations:
                 sections.append("\n**Luận cứ chính:**\n" + "\n".join(f"- {item}" for item in review.supporting_observations))
             if review.counterarguments:
@@ -237,7 +239,10 @@ class ChatService:
                 sections.append("\n**Thông tin còn thiếu:**\n" + "\n".join(f"- {item}" for item in review.missing_information))
             if review.cited_source_ids:
                 sections.append("\nNguồn: " + ", ".join(f"`{item}`" for item in review.cited_source_ids))
-        sections.append("\nLLM chỉ diễn giải evidence; điểm số, forecast và quyết định vẫn do pipeline deterministic kiểm soát.")
+        if all(review.model_role == "indicator_planner" for review in reviews):
+            sections.append("\nLLM chỉ chọn công cụ bổ sung; Python tính chỉ báo và pipeline deterministic kiểm soát điểm số, dự báo và quyết định.")
+        else:
+            sections.append("\nLLM chỉ diễn giải evidence; điểm số, forecast và quyết định vẫn do pipeline deterministic kiểm soát.")
         response.message += "\n".join(sections)
 
     def _mixed_knowledge_analysis(self, query: ParsedQuery) -> AssistantResponse:
