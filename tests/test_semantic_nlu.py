@@ -130,6 +130,22 @@ def test_structured_llm_cannot_bypass_buy_sell_clarification() -> None:
     assert "buy_or_sell_request" in parsed.ambiguities
 
 
+def test_structured_llm_cannot_bypass_missing_ticker_clarification() -> None:
+    class FakeStructuredProvider:
+        def parse_structured(self, system, payload, output_model):
+            del system, payload, output_model
+            return SemanticQuery(
+                original_query="", normalized_query="", intent=QueryIntent.STOCK_ANALYSIS,
+                confidence=0.9, interpretation="analyze an unspecified ticker",
+                needs_clarification=False,
+            )
+
+    parsed = QueryParser(llm_provider=FakeStructuredProvider()).parse("Phan tich ma")
+    assert parsed.tickers == []
+    assert parsed.needs_clarification is True
+    assert parsed.clarification_question
+
+
 def test_structured_llm_failure_is_logged_as_safe_fallback_reason() -> None:
     class FailingProvider:
         def parse_structured(self, system, payload, output_model):
@@ -139,3 +155,14 @@ def test_structured_llm_failure_is_logged_as_safe_fallback_reason() -> None:
     assert parsed.parser_source == "semantic_similarity"
     assert parsed.llm_attempted is True
     assert parsed.fallback_reason == "llm_error:RuntimeError"
+
+
+def test_semantic_llm_can_be_disabled_independently(monkeypatch) -> None:
+    monkeypatch.setenv("STOCK_AGENT_LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("STOCK_AGENT_LLM_SEMANTIC_ENABLED", "false")
+    parser = QueryParser()
+    assert parser.semantic.llm_provider is None
+
+    parsed = parser.parse("Phan tich FPT")
+    assert parsed.tickers == ["FPT"]
+    assert parsed.llm_attempted is False

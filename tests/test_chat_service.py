@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from stock_multi_agent.models.analysis import FinancialMetrics
 from stock_multi_agent.models.chat import ConversationState, ParsedQuery, QueryIntent, ResponseType
 from stock_multi_agent.models.chart import ChartType
+from stock_multi_agent.models.messages import AgentName
 from stock_multi_agent.models.research import ResearchDocumentType
 from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.services.analysis_service import AnalysisService
@@ -59,8 +60,15 @@ class FakeSpecialistProvider:
         citations = payload["allowed_source_ids"][:1] + ["invented:source"]
         return output_model.model_validate({
             "assessment": f"Đánh giá có cấu trúc cho {payload['specialist_role']}.",
-            "supporting_observations": ["Chỉ sử dụng facts đã cung cấp."],
-            "counterarguments": ["Kết quả còn phụ thuộc chất lượng dữ liệu."],
+            "supporting_observations": [
+                "Chỉ sử dụng facts đã cung cấp.",
+                "Các tín hiệu định lượng được giữ nguyên.",
+                "Nguồn dữ liệu được giới hạn theo danh sách cho phép.",
+            ],
+            "counterarguments": [
+                "Kết quả còn phụ thuộc chất lượng dữ liệu.",
+                "Dự báo không bảo đảm diễn biến tương lai.",
+            ],
             "missing_information": ["Không suy diễn dữ liệu chưa có."],
             "cited_source_ids": citations,
         })
@@ -203,9 +211,126 @@ def test_specialist_agents_use_structured_llm_reviews_without_overriding_decisio
     assert all("invented:source" not in item["cited_source_ids"] for item in reviews)
     assert response.metadata["recommendation"] in {"BUY", "HOLD", "WATCH", "AVOID"}
     assert all(item["controls_numeric_output"] is False for item in reviews)
-    assert "LLM specialist reviews" in response.message
+    assert "Nhận định từ LLM" in response.message
     downstream = [item for item in provider.payloads if item["specialist_role"] in {"technical", "risk", "manager"}]
     assert all(item["facts"]["quantitative_forecast"] is not None for item in downstream)
+
+
+def test_specialist_llm_retries_non_vietnamese_output_once() -> None:
+    class LanguageRepairProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def parse_structured(self, system, payload, output_model):
+            del system, payload
+            self.calls += 1
+            if output_model.__name__ == "_CompactVietnameseReview":
+                return output_model.model_validate({
+                    "lines": [
+                        "Dữ liệu cho thấy cần tránh rủi ro giảm giá hiện tại.",
+                        "Kết luận định lượng của hệ thống được giữ nguyên.",
+                        "Dữ liệu giá đã được cung cấp để đánh giá.",
+                        "Rủi ro đã được đo lường từ các chỉ số đầu vào.",
+                        "Các tín hiệu định lượng được đối chiếu trước khi kết luận.",
+                        "Dự báo vẫn còn bất định và không bảo đảm diễn biến tương lai.",
+                        "Chất lượng dữ liệu có thể ảnh hưởng đến độ tin cậy.",
+                        "Cần bổ sung thông tin tài chính cập nhật.",
+                    ],
+                    "cited_source_ids": [],
+                })
+            assessment = "这是中文分析。" if self.calls == 1 else "Dữ liệu cho thấy cần TRÁNH rủi ro drawdown hiện tại."
+            return output_model.model_validate({
+                "assessment": assessment,
+                "supporting_observations": ["Dữ liệu giá đã được cung cấp.", "Rủi ro đã được đo lường.", "Kết luận định lượng được giữ nguyên."],
+                "counterarguments": ["Dự báo còn bất định.", "Dữ liệu có thể chưa đầy đủ."],
+                "missing_information": ["Thiếu thông tin cập nhật."],
+                "cited_source_ids": [],
+            })
+
+    provider = LanguageRepairProvider()
+    review = AgentLLMAdvisor(provider=provider, enabled=True).review(
+        AgentName.MANAGER,
+        "Tổng hợp kết quả",
+        {"ticker": "TCB"},
+        [],
+    )
+    assert provider.calls == 2
+    assert review is not None
+    assert review.status == "GROUNDED"
+    assert "Dữ liệu" in review.assessment
+    assert "drawdown" not in review.assessment
+    assert "giảm giá" in review.assessment
+
+
+def test_specialist_llm_rejects_persistently_non_vietnamese_output() -> None:
+    class ChineseOnlyProvider:
+        def parse_structured(self, system, payload, output_model):
+            del system, payload
+            if output_model.__name__ == "_CompactVietnameseReview":
+                return output_model.model_validate({
+                    "lines": ["这是中文分析。"] * 8,
+                    "cited_source_ids": [],
+                })
+            return output_model.model_validate({
+                "assessment": "这是中文分析。",
+                "supporting_observations": ["这是证据。", "这是证据。", "这是证据。"],
+                "counterarguments": ["这是风险。", "这是风险。"],
+                "missing_information": ["这是缺失信息。"],
+                "cited_source_ids": [],
+            })
+
+    review = AgentLLMAdvisor(provider=ChineseOnlyProvider(), enabled=True).review(
+        AgentName.MANAGER,
+        "Tổng hợp kết quả",
+        {"ticker": "TCB"},
+        [],
+    )
+    assert review is not None
+    assert review.status == "UNAVAILABLE"
+
+
+def test_specialist_llm_retries_english_heavy_technical_output() -> None:
+    class MixedLanguageProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def parse_structured(self, system, payload, output_model):
+            del system, payload
+            self.calls += 1
+            if output_model.__name__ == "_CompactVietnameseReview":
+                return output_model.model_validate({
+                    "lines": [
+                        "Tín hiệu kỹ thuật hiện nghiêng về chiều hướng tiêu cực.",
+                        "Kết luận định lượng của hệ thống được giữ nguyên.",
+                        "Giá đang nằm dưới các đường trung bình quan trọng.",
+                        "Động lượng chưa cho thấy sự phục hồi rõ ràng.",
+                        "Thanh khoản cần được theo dõi để xác nhận xu hướng.",
+                        "Biến động giá có thể làm tín hiệu thay đổi nhanh.",
+                        "Dự báo chỉ mang tính tham khảo và còn bất định.",
+                        "Cần thêm dữ liệu của các phiên tiếp theo để xác nhận.",
+                    ],
+                    "cited_source_ids": [],
+                })
+            return output_model.model_validate({
+                "assessment": "The forecast and technical indicators suggest a strong SELL signal based on recent sessions.",
+                "supporting_observations": ["Dữ liệu giá đã được cung cấp."] * 3,
+                "counterarguments": ["Dự báo còn bất định."] * 2,
+                "missing_information": ["Thiếu thông tin cập nhật."],
+                "cited_source_ids": [],
+            })
+
+    provider = MixedLanguageProvider()
+    review = AgentLLMAdvisor(provider=provider, enabled=True).review(
+        AgentName.TECHNICAL,
+        "Diễn giải tín hiệu kỹ thuật",
+        {"ticker": "FPT"},
+        [],
+    )
+    assert provider.calls == 2
+    assert review is not None
+    assert review.status == "GROUNDED"
+    assert "Tín hiệu kỹ thuật" in review.assessment
+    assert "forecast" not in review.assessment.lower()
 
 
 def test_chart_service_generates_deterministic_figure(chat_service: ChatService) -> None:

@@ -40,7 +40,7 @@ def test_full_analysis_includes_price_and_forecast_contract() -> None:
     response = ResponseComposer.full_analysis(state)
 
     assert state.price_forecast is not None
-    assert "Current price and next-session estimate" in response.message
+    assert "Giá hiện tại và ước tính phiên kế tiếp" in response.message
     assert response.metadata["price_forecast"]["status"] == "BASELINE_UNTRAINED"
     assert response.metadata["price_forecast"]["current_price"] == pytest.approx(state.market_data.bars[-1].close)
 
@@ -50,7 +50,7 @@ def test_selective_single_ticker_analysis_also_includes_price_forecast() -> None
     state = service.analyze_technical("FPT")
     response = ResponseComposer.technical(state)
 
-    assert "Current price and next-session estimate" in response.message
+    assert "Giá hiện tại và ước tính phiên kế tiếp" in response.message
     assert response.metadata["price_forecast"]["ticker"] == "FPT"
 
 

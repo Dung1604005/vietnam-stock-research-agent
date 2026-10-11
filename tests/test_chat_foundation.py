@@ -4,6 +4,7 @@ from stock_multi_agent.models.chat import (
     ChatRole,
     ConversationMessage,
     ConversationState,
+    ParsedQuery,
     QueryIntent,
 )
 
@@ -107,6 +108,17 @@ def test_routing_plan_validator_rejects_forward_dependency_and_missing_input() -
     errors = RoutingPlanValidator.validate(invalid, parsed)
     assert any("forward dependencies" in error for error in errors)
     assert any("missing required inputs" in error for error in errors)
+
+
+def test_router_defensively_asks_for_clarification_when_ticker_is_missing() -> None:
+    parsed = ParsedQuery(
+        raw_query="Phan tich ma",
+        intent=QueryIntent.STOCK_ANALYSIS,
+        needs_clarification=False,
+    )
+    plan = IntentRouter().plan(parsed)
+    assert plan.steps == [RouteStep.CHAT]
+    assert RoutingPlanValidator.validate(plan, parsed) == []
 
 
 def test_risk_secondary_expands_its_deterministic_dependencies() -> None:

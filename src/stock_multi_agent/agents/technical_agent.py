@@ -52,7 +52,7 @@ class TechnicalAgent(BaseAgent):
 
         source_ids = [source.source_id for source in state.market_data.source_refs]
         llm_review = self.llm_review(
-            "Interpret indicator confluence, contradictions, and regime uncertainty",
+            "Diễn giải sự đồng thuận và mâu thuẫn giữa các chỉ báo kỹ thuật, đồng thời đánh giá độ bất định của trạng thái thị trường",
             {
                 "ticker": state.ticker,
                 "horizon": state.investment_horizon,

@@ -50,6 +50,11 @@ CHƯA XÁC ĐỊNH và drawdown là mức sụt giảm. Phản hồi đúng JSON
         r"|\b(?:và|của|không|rủi ro|dữ liệu|giá|cổ phiếu|tín hiệu|dự báo|đánh giá)\b",
         re.IGNORECASE,
     )
+    _ENGLISH_SENTENCE_PATTERN = re.compile(
+        r"\b(?:forecast|score|indicators?|signal|relative return|versus|based on|sessions?|"
+        r"suggests?|strong|month(?:ly)?|technical analysis)\b",
+        re.IGNORECASE,
+    )
 
     def __init__(self, provider: SemanticLLMProvider | None = None, enabled: bool | None = None) -> None:
         self.provider = provider if provider is not None else configured_semantic_provider()
@@ -128,7 +133,12 @@ tiếng Trung, tiếng Nhật hoặc thuật ngữ tiếng Anh nếu có cách d
             *review.counterarguments,
             *review.missing_information,
         ])
-        return not cls._CJK_PATTERN.search(content) and bool(cls._VIETNAMESE_PATTERN.search(content))
+        english_markers = cls._ENGLISH_SENTENCE_PATTERN.findall(content)
+        return (
+            not cls._CJK_PATTERN.search(content)
+            and bool(cls._VIETNAMESE_PATTERN.search(content))
+            and len(english_markers) < 2
+        )
 
     @staticmethod
     def _has_required_detail(review: _StructuredReview) -> bool:

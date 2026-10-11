@@ -53,7 +53,7 @@ SUGGESTIONS = [
 # Increment when provider construction defaults change. Streamlit preserves
 # session_state across source reloads, so this prevents an old provider object
 # from retaining a bursty rate-limit policy after an application upgrade.
-SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v1-llm-manager-detailed-v6"
+SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v1-llm-technical-detailed-v7"
 
 
 def initialize_session() -> tuple[ChatService, InMemoryConversationStore]:
