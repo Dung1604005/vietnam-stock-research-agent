@@ -1,0 +1,4 @@
+# Streamlit Community Cloud prefers requirements.txt over pyproject.toml.
+# vnstock 4.x is published on Vnstock's package index, not on PyPI.
+--extra-index-url https://vnstocks.com/api/simple
+-e .
