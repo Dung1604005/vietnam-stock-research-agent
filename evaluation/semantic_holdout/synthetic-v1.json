@@ -1,0 +1,57 @@
+{
+  "version": "synthetic-holdout-v1",
+  "synthetic": true,
+  "not_for_release_gate": true,
+  "purpose": "Offline smoke test only. These cases are authored examples, not anonymized user traffic or an independent evaluation set.",
+  "cases": [
+    {"query": "đánh giá nhanh FPT giúp mình", "expected_intent": "STOCK_ANALYSIS", "expected_tickers": ["FPT"]},
+    {"query": "HPG trong quý tới liệu ổn chứ", "expected_intent": "STOCK_ANALYSIS", "expected_tickers": ["HPG"], "expected_horizon": "3M"},
+    {"query": "nhìn nhận MWG thế nào", "expected_intent": "STOCK_ANALYSIS", "expected_tickers": ["MWG"]},
+    {"query": "SSI đáng quan tâm không", "expected_intent": "STOCK_ANALYSIS", "expected_tickers": ["SSI"]},
+
+    {"query": "mở đồ thị giá VNM một năm", "expected_intent": "STOCK_CHART", "expected_tickers": ["VNM"], "expected_period": "1Y"},
+    {"query": "cho chart nến HPG nửa năm", "expected_intent": "STOCK_CHART", "expected_tickers": ["HPG"], "expected_period": "6M", "expected_indicators": ["CANDLESTICK"]},
+    {"query": "vẽ đường giá FPT ba tháng gần đây", "expected_intent": "STOCK_CHART", "expected_tickers": ["FPT"], "expected_period": "3M"},
+    {"query": "biểu đồ của nó 6 tháng", "context": {"active_tickers": ["VCB"]}, "expected_intent": "STOCK_CHART", "expected_tickers": ["VCB"], "expected_period": "6M", "expected_follow_up": true},
+
+    {"query": "phân tích trend TCB", "expected_intent": "TECHNICAL_ANALYSIS", "expected_tickers": ["TCB"]},
+    {"query": "MACD của FPT đang báo gì", "expected_intent": "INDICATOR_QUERY", "expected_tickers": ["FPT"], "expected_indicators": ["MACD"]},
+    {"query": "RSI HPG hiện ở mức nào", "expected_intent": "INDICATOR_QUERY", "expected_tickers": ["HPG"], "expected_indicators": ["RSI"]},
+    {"query": "động lượng của mã này còn không", "context": {"active_tickers": ["MWG"]}, "expected_intent": "TECHNICAL_ANALYSIS", "expected_tickers": ["MWG"], "expected_follow_up": true},
+
+    {"query": "P/B VCB có hợp lý không", "expected_intent": "FUNDAMENTAL_ANALYSIS", "expected_tickers": ["VCB"], "expected_indicators": ["PB"], "expected_requested_information": ["valuation"]},
+    {"query": "xem chất lượng lợi nhuận FPT", "expected_intent": "FUNDAMENTAL_ANALYSIS", "expected_tickers": ["FPT"], "expected_requested_information": ["profit"]},
+    {"query": "ROE của VNM bao nhiêu", "expected_intent": "INDICATOR_QUERY", "expected_tickers": ["VNM"], "expected_indicators": ["ROE"]},
+    {"query": "nói về định giá con vừa xem", "context": {"active_tickers": ["SSI"]}, "expected_intent": "FUNDAMENTAL_ANALYSIS", "expected_tickers": ["SSI"], "expected_follow_up": true, "expected_requested_information": ["valuation"]},
+
+    {"query": "rủi ro lớn nhất ở HPG là gì", "expected_intent": "RISK_ANALYSIS", "expected_tickers": ["HPG"]},
+    {"query": "nếu thị trường xấu thì FPT có vấn đề gì", "expected_intent": "RISK_ANALYSIS", "expected_tickers": ["FPT"]},
+    {"query": "có nên cẩn trọng với VNM không", "expected_intent": "RISK_ANALYSIS", "expected_tickers": ["VNM"]},
+    {"query": "trường hợp tệ của nó", "context": {"active_tickers": ["TCB"]}, "expected_intent": "RISK_ANALYSIS", "expected_tickers": ["TCB"], "expected_follow_up": true},
+
+    {"query": "so sánh VCB với BID cho người thận trọng", "expected_intent": "STOCK_COMPARISON", "expected_tickers": ["VCB", "BID"]},
+    {"query": "FPT hay CMG tốt hơn", "expected_intent": "STOCK_COMPARISON", "expected_tickers": ["FPT", "CMG"]},
+    {"query": "so mã này với HPG", "context": {"active_tickers": ["MWG"]}, "expected_intent": "STOCK_COMPARISON", "expected_tickers": ["MWG", "HPG"], "expected_follow_up": true},
+    {"query": "đặt VNM cạnh MSN xem sao", "expected_intent": "STOCK_COMPARISON", "expected_tickers": ["VNM", "MSN"]},
+
+    {"query": "toàn cảnh sàn Việt Nam hôm nay", "expected_intent": "MARKET_OVERVIEW", "expected_tickers": []},
+    {"query": "VN-Index đang vận động ra sao", "expected_intent": "MARKET_OVERVIEW", "expected_tickers": ["VNINDEX"]},
+    {"query": "hôm nay thị trường có tích cực không", "expected_intent": "MARKET_OVERVIEW", "expected_tickers": []},
+    {"query": "diễn biến chung của chứng khoán Việt", "expected_intent": "MARKET_OVERVIEW", "expected_tickers": []},
+
+    {"query": "lọc vài cổ phiếu ngân hàng đáng xem", "expected_intent": "STOCK_DISCOVERY", "expected_tickers": [], "expected_sector": "banking"},
+    {"query": "có mã công nghệ nào nổi bật", "expected_intent": "STOCK_DISCOVERY", "expected_tickers": [], "expected_sector": "technology"},
+    {"query": "tìm cổ phiếu thép cho tôi", "expected_intent": "STOCK_DISCOVERY", "expected_tickers": [], "expected_sector": "steel"},
+    {"query": "gợi ý mã có RSI thấp", "expected_intent": "STOCK_DISCOVERY", "expected_tickers": [], "expected_indicators": ["RSI"]},
+
+    {"query": "giải thích MACD là gì", "expected_intent": "EXPLANATION", "expected_tickers": [], "expected_indicators": ["MACD"]},
+    {"query": "P/E dùng để làm gì", "expected_intent": "EXPLANATION", "expected_tickers": [], "expected_indicators": ["PE"]},
+    {"query": "trợ lý này hỗ trợ được những gì", "expected_intent": "HELP", "expected_tickers": []},
+    {"query": "xin chào nhé", "expected_intent": "GENERAL_CHAT", "expected_tickers": []},
+
+    {"query": "phân tích giúp", "expected_intent": "STOCK_ANALYSIS", "expected_tickers": [], "expected_needs_clarification": true},
+    {"query": "cho mình biểu đồ", "expected_intent": "STOCK_CHART", "expected_tickers": [], "expected_needs_clarification": true},
+    {"query": "so sánh FPT", "expected_intent": "STOCK_COMPARISON", "expected_tickers": ["FPT"], "expected_needs_clarification": true},
+    {"query": "mã kia thế nào", "context": {"active_tickers": ["FPT", "CMG"]}, "expected_intent": "UNKNOWN", "expected_tickers": [], "expected_needs_clarification": true}
+  ]
+}

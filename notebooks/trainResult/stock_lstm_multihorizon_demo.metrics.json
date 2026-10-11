@@ -1,0 +1,39 @@
+{
+  "next_session": {
+    "mae": 0.016617687419056892,
+    "naive_mae": 0.01663168892264366,
+    "mae_relative_improvement": 0.000841856990705639,
+    "rmse": 0.027650680392980576,
+    "naive_rmse": 0.027863191440701485,
+    "directional_accuracy": 0.4540848903543204,
+    "beats_naive_mae": true,
+    "calibration_alpha": 0.6000000000000001,
+    "uses_lstm_signal": true
+  },
+  "five_session": {
+    "mae": 0.035080667585134506,
+    "naive_mae": 0.035237040370702744,
+    "mae_relative_improvement": 0.004437738922541601,
+    "rmse": 0.05746418982744217,
+    "naive_rmse": 0.05783308297395706,
+    "directional_accuracy": 0.5021196420160151,
+    "beats_naive_mae": true,
+    "calibration_alpha": 0.5,
+    "uses_lstm_signal": true
+  },
+  "test_samples": 95535,
+  "train_cutoff": "2024-11-27",
+  "validation_cutoff": "2025-11-03",
+  "validation_calibration": {
+    "next_session_return": {
+      "validation_mae": 0.01745438676971359,
+      "alpha": 0.6000000000000001,
+      "bias": 0.00011018336517736317
+    },
+    "target_return_5": {
+      "validation_mae": 0.037381074330208854,
+      "alpha": 0.5,
+      "bias": 0.0010703782900236547
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "strategy_version": "demo-forward-rank-top-n-v1",
+  "top_n": 3,
+  "execution_lag_sessions": 1,
+  "transaction_cost_bps": 15.0,
+  "require_adjusted_prices": false,
+  "bootstrap_samples": 500,
+  "random_seed": 7
+}

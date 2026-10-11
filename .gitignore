@@ -1,0 +1,42 @@
+# Local Python environments, bytecode, test results and build products
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Project-local D: runtime/cache/snapshots; these can contain market payloads
+# and are regenerated from the configured providers.
+.cache/
+.tmp/
+.runtime/
+pytest-cache-files-*/
+
+# Local credentials. Keep the documented template in version control.
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Editors and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+
+# Notebook checkpoints and local logs
+.ipynb_checkpoints/
+*.log

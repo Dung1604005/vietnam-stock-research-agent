@@ -1,0 +1,12 @@
+{
+  "default": [
+    "FPT", "VNM", "HPG", "MWG", "VCB", "SSI", "TCB", "MBB", "ACB", "BID",
+    "CTG", "VPB", "STB", "HCM", "VND", "VHM", "VIC", "VRE", "KDH", "NLG",
+    "GAS", "PLX", "POW", "REE", "SAB", "PNJ", "MSN", "DGC", "GVR", "VJC"
+  ],
+  "technology": ["FPT", "CMG", "ELC", "CTR"],
+  "banking": ["VCB", "TCB", "MBB", "ACB"],
+  "steel": ["HPG", "HSG", "NKG"],
+  "retail": ["MWG", "FRT", "PNJ"],
+  "real_estate": ["VHM", "KDH", "NLG"]
+}

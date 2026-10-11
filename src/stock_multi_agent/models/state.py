@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import operator
+from datetime import datetime, timezone
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from stock_multi_agent.models.analysis import (
+    FinalDecision,
+    FundamentalAnalysis,
+    MarketData,
+    RiskAnalysis,
+    TechnicalAnalysis,
+)
+from stock_multi_agent.models.data import PortfolioPosition
+from stock_multi_agent.models.forecast import PriceForecast
+from stock_multi_agent.models.messages import AgentMessage, AgentName
+
+
+class TraceEvent(BaseModel):
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    agent: AgentName
+    phase: str
+    action: str
+    detail: str
+    tool: str | None = None
+
+
+class AgentState(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
+    ticker: str
+    investment_horizon: str
+    user_goal: str
+    required_data: list[str] = Field(default_factory=lambda: ["ohlcv", "financials"])
+    requested_indicators: list[str] = Field(default_factory=list)
+    market_data: MarketData | None = None
+    benchmark_data: MarketData | None = None
+    price_forecast: PriceForecast | None = None
+    portfolio_positions: list[PortfolioPosition] = Field(default_factory=list)
+    technical_result: TechnicalAnalysis | None = None
+    fundamental_result: FundamentalAnalysis | None = None
+    risk_result: RiskAnalysis | None = None
+    messages: Annotated[list[AgentMessage], operator.add] = Field(default_factory=list)
+    trace: Annotated[list[TraceEvent], operator.add] = Field(default_factory=list)
+    current_plan: list[str] = Field(default_factory=list)
+    completed_tasks: Annotated[list[str], operator.add] = Field(default_factory=list)
+    iteration: int = Field(default=0, ge=0)
+    max_iterations: int = Field(default=3, ge=0, le=10)
+    conflict_detected: bool = False
+    reanalysis_requested: bool = False
+    final_decision: FinalDecision | None = None

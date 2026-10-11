@@ -1,0 +1,19 @@
+{
+  "schema_version": "stock-lstm-final-manifest-v1",
+  "selected_model": "lstm-multihorizon-v2",
+  "selection_reason": "Best classroom-demo result among V2, clean V3, V4 and V4.1; both V2 horizons beat its declared zero-return holdout baseline.",
+  "runtime_scope": "research display only; never changes BUY/SELL/HOLD and never executes trades",
+  "files": {
+    "stock_lstm_multihorizon_demo.keras": "3e0d71116e7725f8af72ad2068b41272c9c5d986a6b8999fe43f0558a3d6fb24",
+    "stock_lstm_multihorizon_demo.spec.json": "047ea73e946a8c26fb342bb5843660748951be83d2fbfecef42e58f877b01d7e",
+    "stock_lstm_multihorizon_demo.metrics.json": "9ccd364fe40d37a36242df72de4b5180c8170314322556fdbfd2ff35fc1a8b45",
+    "stock_lstm_multihorizon_demo.history.csv": "a0e51f72d1ad2c81fddb83e4c660cb0ad522e35f6749993256216968203025ad"
+  },
+  "declared_limits": [
+    "The next-session MAE advantage over zero return is only 0.0842% and directional accuracy is 45.41%.",
+    "The five-session MAE advantage is 0.4438% and directional accuracy is 50.21%.",
+    "V2 did not use the stricter embargo and bootstrap gate later introduced in V4.",
+    "Price-adjustment status is UNKNOWN and the current-listing universe has survivorship bias.",
+    "Single-ticker runtime inference cannot reconstruct cross-sectional market features; train-mean proxies are disclosed."
+  ]
+}
