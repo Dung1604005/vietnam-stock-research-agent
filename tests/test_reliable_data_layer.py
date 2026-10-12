@@ -182,6 +182,23 @@ def test_provider_health_tracks_cache_hits_without_external_calls() -> None:
     assert health["last_success_at"] is not None
 
 
+def test_provider_uses_community_pacing_when_api_key_is_configured(monkeypatch) -> None:
+    monkeypatch.setenv("VNSTOCK_API_KEY", "community-test-key")
+    monkeypatch.delenv("STOCK_AGENT_PROVIDER_MIN_REQUEST_INTERVAL_SECONDS", raising=False)
+    provider = VnstockMarketDataProvider()
+    assert provider.api_key_configured is True
+    assert provider.executor.policy.min_request_interval_seconds == pytest.approx(1.05)
+    assert provider.health()["api_key_configured"] is True
+
+
+def test_provider_keeps_guest_pacing_without_api_key(monkeypatch) -> None:
+    monkeypatch.delenv("VNSTOCK_API_KEY", raising=False)
+    monkeypatch.delenv("STOCK_AGENT_PROVIDER_MIN_REQUEST_INTERVAL_SECONDS", raising=False)
+    provider = VnstockMarketDataProvider()
+    assert provider.api_key_configured is False
+    assert provider.executor.policy.min_request_interval_seconds == pytest.approx(3.2)
+
+
 def test_financial_normalization_keeps_period_unit_and_source() -> None:
     frame = pd.DataFrame(
         [

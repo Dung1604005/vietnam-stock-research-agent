@@ -60,6 +60,7 @@ class HybridSemanticParser:
                 llm_latency_ms = round((time.perf_counter() - llm_started_at) * 1000)
         if semantic is None:
             semantic = self._fallback(raw, normalized, extracted, resolved, context)
+        semantic = self._enforce_recommendation_contract(semantic, normalized)
         semantic = self._enforce_discovery_contract(semantic)
         semantic = self._enforce_knowledge_contract(semantic, normalized)
         semantic = self._enforce_required_entity_contract(semantic)
@@ -171,6 +172,15 @@ class HybridSemanticParser:
             intent = QueryIntent.THEORY
             confidence = max(confidence, 0.88)
 
+        recommendation_request = (
+            not resolved.tickers
+            and re.search(r"\b(?:ma|co phieu|ticker)\b", normalized)
+            and re.search(r"\b(?:nen mua|dang mua|de (?:mua|buy)|de dau tu|dau tu ma nao|top .{0,20} de mua|lai cao|an toan)\b", normalized)
+        )
+        if recommendation_request:
+            intent = QueryIntent.STOCK_RECOMMENDATION
+            confidence = max(confidence, 0.9)
+
         # Strong compositional precedence: comparison coordinates multiple entities;
         # an opening broad assessment remains primary when chart/risk is added later.
         if re.search(r"\b(?:so sanh|so voi|compare|versus| vs |hon|hay)\b", f" {normalized} ") and (
@@ -212,7 +222,7 @@ class HybridSemanticParser:
             resolved.tickers = list(context.active_tickers)
 
         ambiguities = list(resolved.ambiguities)
-        if intent == QueryIntent.STOCK_DISCOVERY and len(extracted.requested_actions) > 1:
+        if intent in {QueryIntent.STOCK_DISCOVERY, QueryIntent.STOCK_RECOMMENDATION} and len(extracted.requested_actions) > 1:
             ambiguities.append("buy_or_sell_request")
         if re.search(r"\b(?:con kia|ma kia|cai kia)\b", normalized) and not re.search(r"\b(?:thu 2|thu hai|dau tien)\b", normalized):
             if not re.search(r"\b(?:so|so sanh|so voi|compare)\b", normalized):
@@ -304,7 +314,7 @@ class HybridSemanticParser:
     @classmethod
     def _enforce_discovery_contract(cls, semantic: SemanticQuery) -> SemanticQuery:
         """Keep result count/action semantics deterministic even when an LLM parsed the intent."""
-        if semantic.intent is not QueryIntent.STOCK_DISCOVERY or len(semantic.requested_actions) <= 1:
+        if semantic.intent not in {QueryIntent.STOCK_DISCOVERY, QueryIntent.STOCK_RECOMMENDATION} or len(semantic.requested_actions) <= 1:
             return semantic
         ambiguities = list(dict.fromkeys([*semantic.ambiguities, "buy_or_sell_request"]))
         needs_clarification, question = cls._clarification(semantic.intent, semantic.tickers, ambiguities)
@@ -312,6 +322,23 @@ class HybridSemanticParser:
             "ambiguities": ambiguities,
             "needs_clarification": semantic.needs_clarification or needs_clarification,
             "clarification_question": question or semantic.clarification_question,
+        })
+
+    @staticmethod
+    def _enforce_recommendation_contract(semantic: SemanticQuery, normalized: str) -> SemanticQuery:
+        """Make explicit buy/investment shortlist requests deterministic across LLM and fallback NLU."""
+        if semantic.tickers:
+            return semantic
+        has_stock_subject = re.search(r"\b(?:ma|co phieu|ticker)\b", normalized)
+        asks_recommendation = re.search(
+            r"\b(?:nen mua|dang mua|de (?:mua|buy)|de dau tu|dau tu ma nao|top .{0,20} de mua|lai cao|an toan)\b",
+            normalized,
+        )
+        if not (has_stock_subject and asks_recommendation):
+            return semantic
+        return semantic.model_copy(update={
+            "intent": QueryIntent.STOCK_RECOMMENDATION,
+            "confidence": max(semantic.confidence, 0.9),
         })
 
     @staticmethod
@@ -390,7 +417,7 @@ class HybridSemanticParser:
     @staticmethod
     def _clarification(intent: QueryIntent, tickers: list[str], ambiguities: list[str]) -> tuple[bool, str | None]:
         if ambiguities:
-            if intent == QueryIntent.STOCK_DISCOVERY and "buy_or_sell_request" in ambiguities:
+            if intent in {QueryIntent.STOCK_DISCOVERY, QueryIntent.STOCK_RECOMMENDATION} and "buy_or_sell_request" in ambiguities:
                 return True, "Báº¡n muá»‘n tÃ¬m mÃ£ cÃ³ tÃ­n hiá»‡u BUY hay cÃ¡c mÃ£ cÃ³ tÃ­n hiá»‡u SELL? Hai hÆ°á»›ng nÃ y khÃ´ng thá»ƒ xáº¿p chung thÃ nh má»™t danh sÃ¡ch 'tá»‘t nháº¥t'."
             if intent == QueryIntent.STOCK_COMPARISON and len(tickers) == 1:
                 return True, f"Bạn muốn so sánh {tickers[0]} với mã nào?"

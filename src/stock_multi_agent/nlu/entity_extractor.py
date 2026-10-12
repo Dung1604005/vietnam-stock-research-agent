@@ -55,7 +55,7 @@ class EntityExtractor:
                 return value if 1 <= value <= 100 else None
         if re.search(r"\b(?:mot|1)\s*(?:ma|co phieu)\b", text):
             return 1
-        if re.search(r"\b(?:tot nhat|best|cao nhat)\b", text) and re.search(r"\b(?:ma|co phieu)\b", text):
+        if re.search(r"\b(?:tot nhat|best|cao nhat|dang mua nhat|nen mua nhat)\b", text) and re.search(r"\b(?:ma|co phieu)\b", text):
             return 1
         return None
 

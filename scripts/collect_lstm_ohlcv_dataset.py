@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from stock_multi_agent.config import load_workspace_env
 from stock_multi_agent.models.analysis import MarketData
 from stock_multi_agent.providers.market_provider import MarketDataError, VnstockMarketDataProvider
 from stock_multi_agent.providers.universe_provider import VnstockInstrumentUniverseProvider
@@ -106,6 +107,7 @@ def read_previous_failures(path: Path) -> list[dict[str, str]]:
 
 
 def main() -> None:
+    load_workspace_env(ROOT)
     parser = argparse.ArgumentParser(
         description="Collect a real, resumable OHLCV + next-session-label dataset for offline LSTM experiments."
     )

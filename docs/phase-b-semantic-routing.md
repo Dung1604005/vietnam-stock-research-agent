@@ -28,7 +28,7 @@ Task plan hiện là declaration có kiểm soát của công việc dự kiến
 - ambiguity/clarification state;
 - prompt version và example-bank version.
 
-Parser ghi structured application log, không ghi prompt raw hay hidden reasoning. Token/cost để `unknown` vì OpenAI/Ollama adapters hiện không trả usage metadata; không được ước lượng chi phí.
+Parser ghi structured application log, không ghi prompt raw hay hidden reasoning. Token/cost để `unknown` vì các provider adapters hiện không trả usage metadata; không được ước lượng chi phí.
 
 Metadata parser được lưu bền trong `.runtime/telemetry/semantic.sqlite3`: source, latency, LLM attempt/fallback, ambiguity count, clarification và version. Database **không có** cột raw query, ticker hay conversation content. Xem summary local bằng:
 

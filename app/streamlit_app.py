@@ -20,6 +20,7 @@ st.set_page_config(page_title="Stock Multi-Agent Assistant", page_icon="🤖", l
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
 SUGGESTIONS = [
+    "Tôi nên mua cổ phiếu nào hôm nay?",
     "Phân tích FPT",
     "Thị trường Việt Nam hôm nay như thế nào?",
     "Tìm một số cổ phiếu đáng chú ý",
@@ -33,7 +34,7 @@ SUGGESTIONS = [
 # Increment when provider construction defaults change. Streamlit preserves
 # session_state across source reloads, so this prevents an old provider object
 # from retaining a bursty rate-limit policy after an application upgrade.
-SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v2-neo4j-rag-v1-llm-technical-v8"
+SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v2-neo4j-rag-v1-colab-qwen-v10"
 
 
 def initialize_session() -> tuple[ChatService, InMemoryConversationStore]:

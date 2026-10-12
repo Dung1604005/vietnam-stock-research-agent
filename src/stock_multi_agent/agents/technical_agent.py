@@ -42,7 +42,12 @@ class TechnicalAgent(BaseAgent):
         self.tools = toolkit
         self.llm_advisor = llm_advisor
 
-    def run(self, state: AgentState, extended: bool = False) -> dict[str, object]:
+    def run(
+        self,
+        state: AgentState,
+        extended: bool = False,
+        allow_llm_planning: bool = True,
+    ) -> dict[str, object]:
         context = TechnicalAgentContext.from_state(state)
         closes = [bar.close for bar in context.market_data.bars]
         volumes = [bar.volume for bar in context.market_data.bars]
@@ -54,7 +59,7 @@ class TechnicalAgent(BaseAgent):
         required_history = max(50, profile.slow_window + profile.macd_signal)
         source_ids = [source.source_id for source in state.market_data.source_refs]
         indicator_plan = self._existing_indicator_plan(state) if extended else None
-        if indicator_plan is None and not state.requested_indicators:
+        if indicator_plan is None and not state.requested_indicators and allow_llm_planning:
             indicator_plan = self._request_indicator_plan(state, source_ids)
         selected_checks = indicator_plan[0] if indicator_plan is not None else []
         if len(closes) < required_history:
@@ -276,6 +281,7 @@ class TechnicalAgent(BaseAgent):
             "relative_benchmark_note": benchmark_note,
             "regime": regime,
             "trailing_return": round(trailing_return, 6),
+            "annualized_volatility": round(volatility, 6),
             "price_adjustment": state.market_data.price_adjustment.value,
         }
         traces.extend(self.event("ACT", "CALL_TOOL", f"Calculated {tool}", tool) for tool in selected)

@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from stock_multi_agent.config import load_workspace_env
 from stock_multi_agent.providers.market_provider import MarketDataError, VnstockMarketDataProvider
 
 
@@ -17,6 +18,7 @@ def configured_universe() -> list[str]:
 
 
 def main() -> None:
+    load_workspace_env(ROOT)
     parser = argparse.ArgumentParser(description="Fetch real data and report provenance/freshness/quality.")
     parser.add_argument("tickers", nargs="*", help="Ticker list; defaults to the configured watchlist universe")
     parser.add_argument("--prices-only", action="store_true")

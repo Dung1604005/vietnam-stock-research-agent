@@ -67,12 +67,18 @@ class VnstockMarketDataProvider:
         self.cache = cache or (SQLiteMarketDataCache(runtime_root / "cache" / "market_data.sqlite3") if cache_enabled else None)
         self.snapshot_store = snapshot_store or RawSnapshotStore(runtime_root / "snapshots")
         self.quality_checker = quality_checker or DataQualityChecker()
+        self.api_key_configured = bool(os.getenv("VNSTOCK_API_KEY", "").strip())
+        default_request_interval = 1.05 if self.api_key_configured else 3.2
         policy = resilience_policy or ResiliencePolicy(
             max_attempts=_env_number("STOCK_AGENT_PROVIDER_MAX_ATTEMPTS", 1, int),
             base_delay_seconds=_env_number("STOCK_AGENT_PROVIDER_RETRY_DELAY_SECONDS", 0.4, float),
             circuit_failure_threshold=_env_number("STOCK_AGENT_PROVIDER_CIRCUIT_THRESHOLD", 5, int),
             circuit_cooldown_seconds=_env_number("STOCK_AGENT_PROVIDER_CIRCUIT_COOLDOWN_SECONDS", 60, int),
-            min_request_interval_seconds=_env_number("STOCK_AGENT_PROVIDER_MIN_REQUEST_INTERVAL_SECONDS", 3.2, float),
+            min_request_interval_seconds=_env_number(
+                "STOCK_AGENT_PROVIDER_MIN_REQUEST_INTERVAL_SECONDS",
+                default_request_interval,
+                float,
+            ),
         )
         self.executor = ResilientExecutor(policy)
         self.cache_ttl_seconds = cache_ttl_seconds if cache_ttl_seconds is not None else _env_number("STOCK_AGENT_CACHE_TTL_SECONDS", 900, int)
@@ -283,6 +289,8 @@ class VnstockMarketDataProvider:
             "cache_hit_rate": round(self.cache_hits / total_cache_reads, 4) if total_cache_reads else None,
             "last_success_at": self.last_success_at.isoformat() if self.last_success_at else None,
             "last_error": self.last_error,
+            "api_key_configured": self.api_key_configured,
+            "request_interval_seconds": self.executor.policy.min_request_interval_seconds,
             "attempts_total": upstream.attempts_total,
             "successful_operations": upstream.successful_operations,
             "failed_operations": upstream.failed_operations,

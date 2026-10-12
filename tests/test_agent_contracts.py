@@ -31,10 +31,12 @@ class _ResearchFixture:
         return EvidenceBundle(query=query, citations=[citation], retrieval_note="fixture")
 
 
-def test_every_agent_declares_an_explicit_contract_and_only_technical_can_use_llm() -> None:
+def test_every_agent_declares_an_explicit_contract_and_only_bounded_roles_can_use_llm() -> None:
     agent_types = [DataAgent, ResearchAgent, TechnicalAgent, FundamentalAgent, RiskAgent, ManagerAgent]
     assert {agent.spec.role for agent in agent_types} == set(AgentName) - {AgentName.USER}
-    assert [agent.spec.role for agent in agent_types if agent.spec.can_use_llm] == [AgentName.TECHNICAL]
+    assert [agent.spec.role for agent in agent_types if agent.spec.can_use_llm] == [
+        AgentName.TECHNICAL, AgentName.MANAGER,
+    ]
     assert all(agent.spec.required_context for agent in agent_types)
     assert all(agent.spec.output_type for agent in agent_types)
 

@@ -65,10 +65,10 @@ def test_exchange_name_selects_current_universe_screen_not_a_ticker() -> None:
     assert parsed.tickers == []
 
 
-def test_discovery_parser_preserves_requested_count_and_buy_sell_direction() -> None:
+def test_recommendation_parser_preserves_requested_count_and_buy_sell_direction() -> None:
     parser = QueryParser(use_configured_provider=False)
     buy = parser.parse("Tìm cho tôi 10 mã tốt nhất để mua")
-    assert buy.intent is QueryIntent.STOCK_DISCOVERY
+    assert buy.intent is QueryIntent.STOCK_RECOMMENDATION
     assert buy.requested_result_count == 10
     assert buy.requested_actions == ["BUY"]
 

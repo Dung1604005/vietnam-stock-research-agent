@@ -36,7 +36,7 @@ For stock discovery, `requested_result_count` is a typed intent field. The servi
 
 ## Structured providers
 
-`STOCK_AGENT_LLM_PROVIDER=mock` is the default and makes no paid model call. The OpenAI adapter uses typed structured output (`responses.parse` with the Pydantic `SemanticQuery` schema). The Ollama adapter sends the same JSON schema to the local server. Provider/network failure falls back to local semantic similarity.
+The current demo profile uses `STOCK_AGENT_LLM_PROVIDER=colab_qwen` with Qwen2.5-3B-Instruct on Google Colab. The OpenAI and Ollama adapters remain optional. Every provider receives the same typed JSON schema, and provider/network failure falls back to local semantic similarity.
 
 No hidden chain-of-thought is stored or displayed. The debug UI contains only the intent, entities, confidence, resolved references, interpretation, route and bounded task plan.
 

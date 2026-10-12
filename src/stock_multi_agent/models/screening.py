@@ -5,7 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from stock_multi_agent.models.analysis import Signal
+from stock_multi_agent.models.analysis import Recommendation, RiskLevel, Signal
 from stock_multi_agent.models.data import SourceReference
 
 
@@ -25,6 +25,12 @@ class RankingDirection(str, Enum):
     LOWER_SCORE_FIRST = "LOWER_SCORE_FIRST"
 
 
+class RecommendationBucket(str, Enum):
+    HIGH_REWARD_HIGH_RISK = "HIGH_REWARD_HIGH_RISK"
+    SAFE_MODERATE_RETURN = "SAFE_MODERATE_RETURN"
+    UNCLASSIFIED = "UNCLASSIFIED"
+
+
 class UniverseDefinition(BaseModel):
     """A disclosed universe. Current captures are never historical membership evidence."""
 
@@ -42,7 +48,7 @@ class ScreenSpec(BaseModel):
 
     universe_key: str = Field(pattern=r"^[a-z0-9_]+$")
     as_of: date | None = None
-    maximum_candidates: int = Field(default=30, ge=1, le=100)
+    maximum_candidates: int = Field(default=100, ge=1, le=100)
     minimum_technical_score: float = Field(default=4.0, ge=0, le=10)
     eligible_signals: list[Signal] = Field(default_factory=lambda: [Signal.BUY, Signal.HOLD])
     missing_data_policy: MissingDataPolicy = MissingDataPolicy.EXCLUDE_FROM_RANKING
@@ -61,6 +67,47 @@ class ScreenCandidate(BaseModel):
     source_ids: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
     rank: int | None = Field(default=None, ge=1)
+
+
+class ProgressiveScreenRound(BaseModel):
+    round_number: int = Field(ge=1)
+    input_count: int = Field(ge=0)
+    survivor_count: int = Field(ge=0)
+    eliminated_tickers: list[str] = Field(default_factory=list)
+
+
+class RecommendationCandidate(BaseModel):
+    ticker: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$")
+    bucket: RecommendationBucket
+    rank_in_bucket: int = Field(ge=1)
+    technical_score: float = Field(ge=0, le=10)
+    fundamental_score: float = Field(ge=0, le=10)
+    risk_score: float = Field(ge=0, le=10)
+    risk_level: RiskLevel
+    recommendation: Recommendation
+    confidence: float = Field(ge=0, le=1)
+    volatility: float = Field(ge=0)
+    reasoning: str
+    evidence_highlights: list[str] = Field(default_factory=list, max_length=3)
+    as_of: date | None = None
+    source_ids: list[str] = Field(default_factory=list)
+
+
+class DualRecommendation(BaseModel):
+    high_reward: list[RecommendationCandidate] = Field(default_factory=list)
+    safe_picks: list[RecommendationCandidate] = Field(default_factory=list)
+    universe_key: str
+    universe_size: int = Field(ge=0)
+    screened_count: int = Field(ge=0)
+    analyzed_count: int = Field(ge=0)
+    requested_count: int = Field(ge=1, le=100)
+    returned_count: int = Field(ge=0)
+    horizon: str
+    progressive_rounds: list[ProgressiveScreenRound] = Field(default_factory=list)
+    deep_analysis_limits: list[int] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    policy_version: str = "dual-recommendation-v1"
+    disclaimer: str = "Educational analysis only — not financial advice."
 
 
 class ComparisonSpec(BaseModel):

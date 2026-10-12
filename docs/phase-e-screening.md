@@ -6,7 +6,7 @@ E2 is implemented for **current-data screening and comparison**. It is deliberat
 
 ## E1: bounded and deterministic screen
 
-`ScreenSpec` is versioned (`screen-v2`) and declares the universe, candidate ceiling, technical eligibility, score threshold, missing-data policy and a price-date alignment requirement. `ScreeningService` sends each bounded candidate through the existing cache-aware real-data provider and technical-analysis code.
+`ScreenSpec` supports the versioned progressive policy (`screen-v3-progressive`) and declares the universe, candidate ceiling, technical eligibility, score threshold, missing-data policy and a price-date alignment requirement. `ScreeningService` sends each bounded candidate through the existing cache-aware real-data provider and technical-analysis code.
 
 Each candidate is visible as one of:
 
@@ -24,9 +24,9 @@ Each candidate is visible as one of:
 - provider source URL, request parameters, SHA-256, snapshot ID and retrieval timestamp in `SourceReference`;
 - a short-lived convenience cache at `.runtime/cache/current_instrument_universe_v2.json` (default 24 hours).
 
-The service exposes the explicit universes `market_current`, `hose_current`, `hnx_current` and `upcom_current`. A normal chat request can say, for example, “Sàng lọc sàn HOSE” or “Tìm mã trên UPCOM”. The request remains bounded by `ScreenSpec.maximum_candidates` (default 30), so it does not create an unbounded upstream market scan.
+The service exposes the explicit universes `market_current`, `hose_current`, `hnx_current` and `upcom_current`. A normal chat request can say, for example, “Sàng lọc sàn HOSE” or “Tìm mã trên UPCOM”. The request remains bounded by `ScreenSpec.maximum_candidates` (default and maximum 100), so it does not create an unbounded upstream market scan.
 
-At the current safety limit, a large current universe is selected as the deterministic ticker-ascending prefix (`ticker_ascending_prefix_v1`). The response discloses this selection rule. It is a bounded operational screen, **not** a claim that the first 30 symbols are a representative market sample. A liquidity/market-cap prefilter requires a source that supplies those fields in bulk.
+The configured default universe now contains 100 unique Vietnamese tickers. `run_progressive()` ranks all successfully evaluated candidates once and uses successive halving until top-K remains. It is a bounded operational screen, **not** a claim that the configured 100 symbols represent the whole market. A liquidity/market-cap prefilter still requires a source that supplies those fields in bulk.
 
 The VCI endpoint is a **retrieval-time catalogue**, not a source of historical index membership or verified listing/delisting effective dates. Therefore its universe has `captured_at`, source provenance and a symbol count, but deliberately has:
 

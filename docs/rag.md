@@ -8,7 +8,7 @@ Câu hỏi
   -> cosine similarity trên research_chunk_embeddings
   -> hybrid merge với SQLite FTS5
   -> top-k chunk có provenance
-  -> Ollama/OpenAI structured synthesis
+  -> configured structured synthesis (Colab Qwen/OpenAI/legacy Ollama)
   -> kiểm tra source_id
   -> câu trả lời kèm citation
 ```

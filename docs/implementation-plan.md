@@ -29,7 +29,7 @@ Dependencies are injected into agents. Providers acquire data or text; tools per
 - `FinancialToolkit` owns growth and quality scoring helpers.
 - `VnstockMarketDataProvider` is the production/default provider. The integration targets the current vnstock 4.x unified API, validates ticker/data availability, and converts unstable external frames into internal models.
 - Test-only in-memory providers supply deterministic inputs to unit tests; they are not a user-facing analysis mode.
-- `LLMProvider` is a protocol. Mock, OpenAI, and Ollama adapters can be swapped without changing graph/agents. The MVP deliberately uses auditable deterministic policies.
+- `LLMProvider` is a protocol. Colab Qwen, Mock, OpenAI, and legacy Ollama adapters can be swapped without changing graph/agents. Numerical calculations and decision policies remain auditable and deterministic.
 
 ## Graph workflow
 

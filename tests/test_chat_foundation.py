@@ -77,6 +77,11 @@ def test_router_selects_only_needed_agents() -> None:
     full_plan = router.plan(parser.parse("Phân tích FPT"))
     assert RouteStep.FUNDAMENTAL in full_plan.steps
     assert RouteStep.RISK in full_plan.steps
+    recommendation_plan = router.plan(parser.parse("Tìm 10 mã tốt nhất để mua"))
+    assert recommendation_plan.steps == [RouteStep.SCREENING, RouteStep.RECOMMENDATION]
+    assert RoutingPlanValidator.validate(
+        recommendation_plan, parser.parse("Tìm 10 mã tốt nhất để mua")
+    ) == []
 
 
 def test_routing_plan_has_typed_dependencies_and_bounded_budget() -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -50,6 +52,13 @@ class CurrentUniverseProvider:
                 Instrument(ticker="ABC", exchange="UPCOM"),
             ], source_reference=source,
         )
+
+
+def test_default_watchlist_contains_100_unique_vietnamese_tickers() -> None:
+    watchlist = json.loads((Path(__file__).parents[1] / "config" / "watchlist.json").read_text(encoding="utf-8"))
+    tickers = watchlist["default"]
+    assert len(tickers) == 100
+    assert len(set(tickers)) == 100
 
 
 def test_screen_spec_discloses_bounded_universe_and_missing_data_policy() -> None:
@@ -121,6 +130,21 @@ def test_screen_withholds_ranking_when_price_dates_do_not_align() -> None:
     assert all(item.status is ScreenStatus.UNAVAILABLE for item in run.candidates)
     assert all(item.rank is None for item in run.candidates)
     assert "ranking is withheld" in run.warnings[0]
+
+
+def test_progressive_screen_halves_ranked_pool_without_refetching() -> None:
+    tickers = ["FPT", "CMG", "CTR", "ELC", "VNM", "HPG", "VCB", "TCB"]
+    provider = ScreenProvider(tickers)
+    run = ScreeningService(
+        AnalysisService(provider=provider), UniverseService({"default": tickers}),
+    ).run_progressive(
+        ScreenSpec(universe_key="default", maximum_candidates=8), "3 months", target_count=2,
+    )
+    assert len(run.candidates) == 8
+    assert len(run.selected_tickers) == 2
+    assert [item.input_count for item in run.progressive_rounds] == [8, 4]
+    assert [item.survivor_count for item in run.progressive_rounds] == [4, 2]
+    assert len({ticker for item in run.progressive_rounds for ticker in item.eliminated_tickers}) == 6
 
 
 def test_comparison_withholds_incompatible_price_and_financial_fields() -> None:

@@ -39,6 +39,11 @@ INTENT_EXAMPLES: dict[QueryIntent, tuple[str, ...]] = {
         "tim co phieu nganh", "scan giup may ma", "tim vai ma tiem nang",
         "co phieu nao chi bao thap", "ma nao dang tot", "ma khac thi sao",
     ),
+    QueryIntent.STOCK_RECOMMENDATION: (
+        "cho toi ma co phieu nen mua hom nay", "goi y co phieu tot de dau tu",
+        "ma nao dang mua nhat hien tai", "toi nen mua co phieu nao bay gio",
+        "tim top co phieu de mua", "chon co phieu lai cao va co phieu an toan",
+    ),
     QueryIntent.STOCK_COMPARISON: (
         "hai ma con nao on hon", "so sanh hai co phieu", "ma nay voi ma kia",
         "giua hai ma chon cai nao", "versus con nao hon", "compare with",

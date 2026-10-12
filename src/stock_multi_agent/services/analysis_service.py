@@ -23,6 +23,7 @@ class AnalysisService:
         price_forecast_service: PriceForecastService | None = None,
         llm_advisor: AgentLLMAdvisor | None = None,
         research_store: ResearchStore | None = None,
+        manager_routing_enabled: bool | None = None,
     ) -> None:
         source = os.getenv("VNSTOCK_SOURCE", "VCI")
         market_provider = provider or VnstockMarketDataProvider(source=source)
@@ -33,7 +34,11 @@ class AnalysisService:
         self.technical_agent = TechnicalAgent(technical_tools, llm_advisor=advisor)
         self.fundamental_agent = FundamentalAgent(FinancialToolkit())
         self.risk_agent = RiskAgent(technical_tools)
-        self.manager_agent = ManagerAgent()
+        self.manager_agent = ManagerAgent(
+            llm_advisor=advisor,
+            llm_provider=advisor.provider,
+            routing_enabled=manager_routing_enabled,
+        )
         self.price_forecast_service = price_forecast_service or PriceForecastService()
         self.graph = StockAgentGraph(
             data_agent=self.data_agent,
@@ -70,6 +75,7 @@ class AnalysisService:
         investment_horizon: str = "3 months",
         include_financials: bool = False,
         include_benchmark: bool = False,
+        include_forecast: bool = True,
     ) -> AgentState:
         required_data = ["ohlcv", "financials"] if include_financials else ["ohlcv"]
         if include_benchmark:
@@ -80,7 +86,7 @@ class AnalysisService:
             required_data=required_data,
         )
         result = self._merge(state, self.data_agent.run(state))
-        if result.market_data is not None:
+        if result.market_data is not None and include_forecast:
             result.price_forecast = self.price_forecast_service.forecast_next_session(result.market_data)
         return result
 
@@ -90,12 +96,18 @@ class AnalysisService:
         investment_horizon: str = "3 months",
         requested_indicators: list[str] | None = None,
         include_benchmark: bool = False,
+        allow_llm_planning: bool = True,
+        include_forecast: bool = True,
     ) -> AgentState:
         state = self.fetch_data(
             ticker, investment_horizon, include_financials=False, include_benchmark=include_benchmark,
+            include_forecast=include_forecast,
         )
         state.requested_indicators = requested_indicators or []
-        return self._merge(state, self.technical_agent.run(state))
+        return self._merge(
+            state,
+            self.technical_agent.run(state, allow_llm_planning=allow_llm_planning),
+        )
 
     def analyze_fundamental(self, ticker: str, investment_horizon: str = "3 months") -> AgentState:
         state = self.fetch_data(ticker, investment_horizon, include_financials=True)

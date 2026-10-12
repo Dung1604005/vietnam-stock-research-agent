@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import pytest
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from stock_multi_agent.models.analysis import FinancialMetrics
+from stock_multi_agent.models.analysis import FinancialMetrics, Recommendation, RiskLevel
 from stock_multi_agent.models.chat import ConversationState, ParsedQuery, QueryIntent, ResponseType
 from stock_multi_agent.models.chart import ChartType
 from stock_multi_agent.models.messages import AgentName
+from stock_multi_agent.models.screening import (
+    DualRecommendation,
+    RecommendationBucket,
+    RecommendationCandidate,
+)
 from stock_multi_agent.models.research import ResearchDocumentType
 from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.services.analysis_service import AnalysisService
@@ -156,8 +161,108 @@ def test_discovery_honors_explicit_result_count_and_reports_shortfall() -> None:
 
     shortfall = query.model_copy(update={"requested_result_count": 20})
     response = service.handle(shortfall.raw_query, ConversationState(), parsed_query=shortfall)
-    assert len(response.tickers) == 10
+    assert len(response.tickers) == 12
     assert any("Requested 20" in warning for warning in response.warnings)
+
+
+def test_recommendation_dispatch_renders_two_buckets_and_exact_count() -> None:
+    def candidate(ticker: str, bucket: RecommendationBucket) -> RecommendationCandidate:
+        return RecommendationCandidate(
+            ticker=ticker,
+            bucket=bucket,
+            rank_in_bucket=1,
+            technical_score=8.0,
+            fundamental_score=7.0,
+            risk_score=6.0 if bucket is RecommendationBucket.HIGH_REWARD_HIGH_RISK else 3.0,
+            risk_level=RiskLevel.HIGH if bucket is RecommendationBucket.HIGH_REWARD_HIGH_RISK else RiskLevel.LOW,
+            recommendation=Recommendation.BUY,
+            confidence=0.7,
+            volatility=0.4 if bucket is RecommendationBucket.HIGH_REWARD_HIGH_RISK else 0.18,
+            reasoning="Meets the disclosed deterministic bucket policy.",
+            as_of=date(2026, 10, 9),
+            source_ids=[f"fixture:{ticker}"],
+        )
+
+    class FakeRecommendationService:
+        def recommend(self, **kwargs):
+            assert kwargs["requested_count"] == 2
+            assert kwargs["max_quick_screen"] == 100
+            return DualRecommendation(
+                high_reward=[candidate("FPT", RecommendationBucket.HIGH_REWARD_HIGH_RISK)],
+                safe_picks=[candidate("VNM", RecommendationBucket.SAFE_MODERATE_RETURN)],
+                universe_key="default",
+                universe_size=100,
+                screened_count=20,
+                analyzed_count=4,
+                requested_count=2,
+                returned_count=2,
+                horizon="3 months",
+            )
+
+    service = ChatService(
+        analysis_service=AnalysisService(provider=MultiTickerProvider(["FPT", "VNM"])),
+        recommendation_service=FakeRecommendationService(),
+        universe={"default": ["FPT", "VNM"]},
+    )
+    query = ParsedQuery(
+        raw_query="Tìm 2 mã tốt nhất để mua",
+        intent=QueryIntent.STOCK_RECOMMENDATION,
+        requested_result_count=2,
+        confidence=0.95,
+    )
+    response = service.handle(query.raw_query, ConversationState(), parsed_query=query)
+    assert response.tickers == ["FPT", "VNM"]
+    assert len(response.tables) == 2
+    assert response.metadata["returned_result_count"] == 2
+    assert response.metadata["routing_plan"] == ["SCREENING", "RECOMMENDATION"]
+
+
+def test_manager_llm_can_promote_natural_buy_question_to_recommendation_route() -> None:
+    class FakeManagerProvider:
+        def parse_structured(self, system, payload, output_model):
+            assert "Manager Agent" in system
+            assert payload["requested_actions"] == ["BUY"]
+            return output_model.model_validate({
+                "intent": "STOCK_RECOMMENDATION",
+                "confidence": 0.96,
+            })
+
+    class EmptyRecommendationService:
+        def recommend(self, **kwargs):
+            return DualRecommendation(
+                universe_key="default",
+                universe_size=100,
+                screened_count=0,
+                analyzed_count=0,
+                requested_count=kwargs["requested_count"],
+                returned_count=0,
+                horizon=kwargs["horizon"],
+            )
+
+    manager_provider = FakeManagerProvider()
+    analysis = AnalysisService(
+        provider=MultiTickerProvider(["FPT"]),
+        llm_advisor=AgentLLMAdvisor(provider=manager_provider, enabled=False),
+        manager_routing_enabled=True,
+    )
+    service = ChatService(
+        analysis_service=analysis,
+        recommendation_service=EmptyRecommendationService(),
+        universe={"default": ["FPT"]},
+    )
+    query = ParsedQuery(
+        raw_query="Tôi nên mua cổ phiếu nào hôm nay",
+        normalized_query="toi nen mua co phieu nao hom nay",
+        intent=QueryIntent.GENERAL_CHAT,
+        requested_actions=["BUY"],
+        confidence=0.55,
+    )
+    response = service.handle(query.raw_query, ConversationState(), parsed_query=query)
+
+    assert response.metadata["routing_plan"] == ["SCREENING", "RECOMMENDATION"]
+    assert response.metadata["parsed_intent"] == "STOCK_RECOMMENDATION"
+    assert response.metadata["manager_routing"]["accepted"] is True
+    assert response.metadata["manager_routing"]["llm_used"] is True
 
 
 def test_long_term_follow_up_keeps_ticker(chat_service: ChatService) -> None:

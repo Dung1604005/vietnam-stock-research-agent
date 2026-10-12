@@ -16,6 +16,7 @@ class RouteStep(str, Enum):
     CHART = "CHART"
     MARKET = "MARKET"
     SCREENING = "SCREENING"
+    RECOMMENDATION = "RECOMMENDATION"
     COMPARISON = "COMPARISON"
     RESEARCH = "RESEARCH"
     KNOWLEDGE = "KNOWLEDGE"
@@ -80,7 +81,7 @@ class RoutingPlanValidator:
             available_inputs.add("tickers")
         if plan.intent == QueryIntent.MARKET_OVERVIEW:
             available_inputs.add("market_index")
-        if plan.intent == QueryIntent.STOCK_DISCOVERY:
+        if plan.intent in {QueryIntent.STOCK_DISCOVERY, QueryIntent.STOCK_RECOMMENDATION}:
             available_inputs.add("universe")
         if plan.intent == QueryIntent.RESEARCH:
             available_inputs.add("research_query")
@@ -121,6 +122,7 @@ class IntentRouter:
         RouteStep.CHART: (["market_data"], ["chart_artifact"], 15, 1),
         RouteStep.MARKET: (["market_data"], ["market_overview"], 15, 1),
         RouteStep.SCREENING: (["universe"], ["candidate_tickers"], 30, 3),
+        RouteStep.RECOMMENDATION: (["candidate_tickers"], ["dual_recommendation"], 120, 6),
         RouteStep.COMPARISON: (["market_data_collection"], ["comparison"], 30, 3),
         RouteStep.RESEARCH: (["research_query"], ["evidence_bundle"], 20, 2),
         RouteStep.KNOWLEDGE: (["user_message"], ["knowledge_evidence"], 10, 1),
@@ -154,6 +156,7 @@ class IntentRouter:
             QueryIntent.RISK_ANALYSIS: [RouteStep.DATA, RouteStep.TECHNICAL, RouteStep.FUNDAMENTAL, RouteStep.RISK],
             QueryIntent.MARKET_OVERVIEW: [RouteStep.DATA, RouteStep.MARKET],
             QueryIntent.STOCK_DISCOVERY: [RouteStep.SCREENING, RouteStep.DATA, RouteStep.TECHNICAL],
+            QueryIntent.STOCK_RECOMMENDATION: [RouteStep.SCREENING, RouteStep.RECOMMENDATION],
             QueryIntent.STOCK_COMPARISON: [RouteStep.DATA, RouteStep.TECHNICAL, RouteStep.FUNDAMENTAL, RouteStep.RISK, RouteStep.MANAGER, RouteStep.COMPARISON],
             QueryIntent.STOCK_CHART: [RouteStep.DATA, RouteStep.CHART],
             QueryIntent.INDICATOR_QUERY: [RouteStep.DATA, RouteStep.TECHNICAL],
@@ -235,6 +238,8 @@ class IntentRouter:
                 dependencies = [task_by_step[RouteStep.DATA]]
             elif step == RouteStep.SCREENING:
                 task_inputs = ["universe"]
+            elif step == RouteStep.RECOMMENDATION:
+                dependencies = [task_by_step[RouteStep.SCREENING]]
             task = RoutingTask(
                 id=task_id,
                 step=step,

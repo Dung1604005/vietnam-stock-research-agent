@@ -249,7 +249,7 @@ Phase A cho data đúng kỳ/đơn vị/provenance; Phase C cho event/document e
 
 ### Vấn đề đang giải quyết
 
-Discovery hiện chỉ sort technical score trên watchlist JSON 4–6 mã. Comparison chạy full graph từng mã nhưng không chuẩn hóa ngành, quy mô, kỳ tài chính hoặc valuation context.
+Discovery hiện quét watchlist JSON 100 mã, xếp hạng technical và successive-halving về đúng top-K. Dual recommendation tiếp tục chạy full graph trên survivors và phân loại hai bucket deterministic. Comparison vẫn chưa chuẩn hóa đầy đủ ngành, quy mô, kỳ tài chính hoặc valuation context.
 
 ### User value
 

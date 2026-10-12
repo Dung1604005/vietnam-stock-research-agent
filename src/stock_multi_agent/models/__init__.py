@@ -39,6 +39,12 @@ from stock_multi_agent.models.research import (
     FetchedDocument, ResearchDocument, ResearchDocumentType, ResearchPlan, ResearchQuery, WebCitation,
 )
 from stock_multi_agent.models.state import AgentState, TraceEvent
+from stock_multi_agent.models.screening import (
+    DualRecommendation,
+    ProgressiveScreenRound,
+    RecommendationBucket,
+    RecommendationCandidate,
+)
 
 __all__ = [
     "AgentMessage", "AgentName", "AgentState", "FinalDecision",
@@ -67,4 +73,8 @@ __all__ = [
     "KnowledgeSearchResult",
     "KnowledgeSourceType",
     "VerificationStatus",
+    "DualRecommendation",
+    "ProgressiveScreenRound",
+    "RecommendationBucket",
+    "RecommendationCandidate",
 ]

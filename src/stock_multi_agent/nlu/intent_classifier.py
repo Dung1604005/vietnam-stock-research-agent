@@ -76,6 +76,7 @@ class SemanticSimilarityClassifier:
             (QueryIntent.FUNDAMENTAL_ANALYSIS, r"\b(?:co ban|fundamental|dinh gia|loi nhuan|doanh thu|tai chinh|lam an|doanh nghiep)\b", 0.38),
             (QueryIntent.RISK_ANALYSIS, r"\b(?:rui ro|nguy hiem|diem xau|case xau|truong hop te|worst case|downside|mat von|can than|can trong|so cai gi|co van de gi|cang)\b", 0.38),
             (QueryIntent.MARKET_OVERVIEW, r"\b(?:thi truong|chung khoan viet nam|vnindex|market|do hay xanh|chi so chung)\b", 0.43),
+            (QueryIntent.STOCK_RECOMMENDATION, r"\b(?:nen mua|dang mua|de (?:mua|buy)|de dau tu|dau tu ma nao|top co phieu de mua|lai cao|an toan)\b", 0.58),
             (QueryIntent.STOCK_DISCOVERY, r"\b(?:goi y|tim|scan|ma nao|con nao|co phieu nao|vai ma|may ma|ma khac)\b", 0.36),
             (QueryIntent.RESEARCH, r"\b(?:bao cao|filing|cong bo thong tin|nghi quyet|annual report|tai lieu|ban lanh dao|investor relations)\b", 0.46),
             (QueryIntent.STOCK_ANALYSIS, r"\b(?:phan tich|danh gia|nhan xet|goc nhin|on khong|ngon khong|dang de y|xem giup)\b", 0.28),

@@ -16,7 +16,7 @@ flowchart LR
     X --> A
     A --> T[Pure tools]
     T --> P[vnstock real-data provider]
-    A -. Technical tool planning only .-> L[Mock / OpenAI / Ollama LLM provider]
+    A -. Typed routing, Technical tool planning, grounded summary .-> L[Colab Qwen / OpenAI / Ollama provider]
     G <--> ST[(AgentState)]
     C --> R[ResponseComposer]
     R --> CH[ChartService / Plotly]
@@ -33,14 +33,16 @@ flowchart LR
 | Risk | Data → Technical + Fundamental → Risk |
 | Chart | Data → deterministic ChartService |
 | Market overview | VN-Index Data → market calculation → Manager |
-| Discovery | Configured watchlist → Data + Technical → ranking |
+| Discovery | Configured 100-symbol watchlist → Technical quick screen → successive-halving top-K |
+| Recommendation | Quick screen → full multi-agent analysis of survivors → two deterministic risk/return buckets |
+| Manager routing | Optional structured LLM intent selection → deterministic route validation and agent plan |
 | Comparison | Full analysis per ticker → comparison synthesis |
 
 `ConversationState` keeps active tickers, last intent/horizon/chart period, latest analysis, latest stock list, preferences, a bounded message window, and a compact summary of trimmed messages. Raw history is never allowed to grow without limit.
 
 ## Agent architecture
 
-Every agent has a typed `AgentSpec` (role, goal, required context, tool allowlist, output and constraints), observes a validated context model, and emits an `AgentExecutionReport`. Tools contain calculations but no BUY/HOLD policy. Only Technical may use the LLM, and only to select at most two allowlisted diagnostics; Python owns all numbers, scores and decisions.
+Every agent has a typed `AgentSpec` (role, goal, required context, tool allowlist, output and constraints), observes a validated context model, and emits an `AgentExecutionReport`. Tools contain calculations but no BUY/HOLD policy. Technical may use the LLM only to select at most two allowlisted diagnostics. Manager may select a typed intent and summarize completed evidence. Python owns all numbers, scores and decisions.
 
 ## Multi-agent interaction
 

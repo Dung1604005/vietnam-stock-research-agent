@@ -56,17 +56,17 @@ Dynamic routing is visible under **View agent activity**. A chart request does n
 
 Open **View semantic interpretation** under a response to inspect normalized input, intent, entities, confidence, context resolution and the selected parser. This is an auditable summary, not hidden chain-of-thought.
 
-The local fallback uses semantic similarity against a varied example bank plus deterministic ticker/indicator/period extraction. When `STOCK_AGENT_LLM_PROVIDER=openai` or `ollama`, the same pipeline can use the typed Pydantic `SemanticQuery` schema; provider failure safely returns to the local fallback with an auditable reason and latency. `IntentRouter` then emits only allowlisted, validator-checked task steps—it does not grant the model arbitrary tool access. See [semantic NLU](docs/semantic-nlu.md) and [Phase B](docs/phase-b-semantic-routing.md).
+The local fallback uses semantic similarity against a varied example bank plus deterministic ticker/indicator/period extraction. When `STOCK_AGENT_LLM_PROVIDER=colab_qwen`, `openai`, or `ollama`, the same pipeline can use typed Pydantic schemas; provider failure safely returns to deterministic behavior with an auditable reason. `IntentRouter` then emits only allowlisted, validator-checked task steps—it does not grant the model arbitrary tool access. See [semantic NLU](docs/semantic-nlu.md) and [Phase B](docs/phase-b-semantic-routing.md).
 
-For local Ollama reasoning, configure `STOCK_AGENT_LLM_PROVIDER=ollama`, `OLLAMA_MODEL=qwen2.5:1.5b`, and `OLLAMA_BASE_URL=http://127.0.0.1:11435`. Start the project-dedicated server with `./scripts/start_project_ollama.ps1`; it reads models from `.runtime/ollama-models` on drive D and avoids conflicting with Ollama Desktop on port 11434. Stop it with `./scripts/stop_project_ollama.ps1`. The LLM receives only a structured evidence packet; it cannot replace deterministic scores, BUY/HOLD/WATCH policy, or the LSTM numerical forecast.
+The active LLM profile uses `Qwen/Qwen2.5-3B-Instruct` on a Google Colab GPU. Manager uses it to choose a typed intent and to produce one grounded final summary; Technical uses it only to select up to two allowlisted indicator tools. Configure the temporary URL and token printed by [the Colab server notebook](notebooks/serve_qwen25_3b_colab.ipynb). Full setup and data-boundary details are in [Google Colab Qwen setup](docs/colab-qwen-setup.md).
 
-For deeper hybrid reasoning inside the graph, set `STOCK_AGENT_LLM_SPECIALISTS_ENABLED=true` and choose roles through `STOCK_AGENT_LLM_SPECIALIST_ROLES=data,technical,fundamental,risk,manager`. Data uses the LLM only for a provenance/completeness audit; Technical uses it as a bounded tool planner and lets Python calculate every selected indicator; Fundamental interprets its independently calculated evidence; Risk challenges both branches; Manager synthesizes disagreements. LSTM forecasting runs immediately after Data so downstream specialists can use the same forecast context. Every LLM call uses a Pydantic JSON schema, filters citations against real source IDs, fails back to the deterministic result, and cannot invent indicator values or mutate scores, signals, vetoes, forecasts, or the final recommendation.
+Set `STOCK_AGENT_LLM_SPECIALISTS_ENABLED=true` and `STOCK_AGENT_LLM_SPECIALIST_ROLES=technical` for the recommended demo profile. LSTM forecasting runs immediately after Data, Qwen selects supplemental technical checks, and Python calculates every value. Every LLM call uses a Pydantic JSON schema, filters citations against real source IDs, fails back to the deterministic result, and cannot mutate scores, signals, vetoes, forecasts, or the final recommendation.
 
-For a lower-latency local profile, set `STOCK_AGENT_LLM_SEMANTIC_ENABLED=false`, disable the final analyst, and enable only the `technical` specialist role. Intent and ticker extraction then use the tested local semantic fallback. Ollama selects up to two supplemental checks from Bollinger Bands, maximum drawdown, and support/resistance; Python computes their values, and Manager remains deterministic.
+For lower latency, keep `STOCK_AGENT_LLM_SEMANTIC_ENABLED=false` and `STOCK_AGENT_LLM_ANALYST_ENABLED=false`. Manager then makes one small routing call and one final synthesis call, while quick screening never invokes the model for all 100 symbols. If Colab is unavailable, both Manager and Technical preserve the deterministic result.
 
 ## Research evidence
 
-The research route now implements a complete local RAG loop: question embedding, cosine vector similarity, hybrid FTS5 merge, top-k provenance chunks, and citation-constrained Ollama/OpenAI synthesis. The educational KB is additionally projected into Neo4j, where bounded 1–2 hop entity traversal contributes provenance-linked document candidates to hybrid retrieval. On a local miss, a bounded research service keeps the user's subject intact, discovers both official exchange pages and complementary public sources, safely fetches public HTML, extracts text/metadata, and shows quote-level **external evidence** with canonical URL and timestamps. The default `free` discovery chain needs no API key. Failed/unfetched sources remain clearly labelled discovery results—not evidence—and no web content is silently ingested. See [RAG architecture](docs/rag.md), [Neo4j Knowledge Graph](docs/knowledge-graph.md), and [Phase C evidence foundation](docs/phase-c-research-evidence.md).
+The research route now implements a complete local RAG loop: question embedding, cosine vector similarity, hybrid FTS5 merge, top-k provenance chunks, and citation-constrained synthesis through the configured LLM provider. The educational KB is additionally projected into Neo4j, where bounded 1–2 hop entity traversal contributes provenance-linked document candidates to hybrid retrieval. On a local miss, a bounded research service keeps the user's subject intact, discovers both official exchange pages and complementary public sources, safely fetches public HTML, extracts text/metadata, and shows quote-level **external evidence** with canonical URL and timestamps. The default `free` discovery chain needs no API key. Failed/unfetched sources remain clearly labelled discovery results—not evidence—and no web content is silently ingested. See [RAG architecture](docs/rag.md), [Neo4j Knowledge Graph](docs/knowledge-graph.md), and [Phase C evidence foundation](docs/phase-c-research-evidence.md).
 
 ## Knowledge Base for theory questions
 
@@ -117,7 +117,9 @@ python -m venv .venv
   --extra-index-url https://vnstocks.com/api/simple -e ".[dev]"
 ```
 
-Copy `.env.example` settings into your environment if you want a vnstock source other than the default `VCI`. No LLM key is required: core reasoning is deterministic and auditable.
+Copy `.env.example` settings into your environment. Core calculations remain deterministic; the Colab URL/token are required only while using remote Qwen features.
+
+For the free Vnstock Community tier, put `VNSTOCK_API_KEY` in the ignored local `.env`. The provider then changes its own safe pacing from the Guest profile to about 57 requests/minute, below the upstream 60 requests/minute limit. Verify the tier without printing the key with `python scripts/check_vnstock_api_key.py`. See [Vnstock Community API setup](docs/vnstock-community-api.md).
 
 ## Run
 
@@ -178,9 +180,9 @@ Inspect real-data quality without running an analysis:
 
 vnstock/vnai normally writes first-run notices and configuration under the Windows user profile. The provider scopes its runtime profile to `.runtime/` in this D-drive project and disables optional telemetry by default, so it does not create project data on drive C.
 
-## Optional LLM presentation providers
+## LLM providers
 
-`LLMProvider` has Mock/deterministic, OpenAI, and Ollama adapters. Mock mode is the default and has no model API charge. OpenAI semantic parsing is optional and incurs API usage when enabled; Ollama runs locally. No LLM owns indicator calculations, risk vetoes, or the final safety policy. Install the OpenAI adapter only when needed:
+`LLMProvider` has Colab Qwen, Mock/deterministic, OpenAI, and legacy Ollama adapters. The configured demo path is Colab Qwen and needs no paid model API, but the Colab runtime and its temporary tunnel must stay active. No LLM owns indicator calculations, risk vetoes, or the final safety policy. Install the OpenAI adapter only when needed:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install --cache-dir .cache\pip -e ".[llm]"

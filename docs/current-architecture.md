@@ -6,9 +6,9 @@ Tài liệu này mô tả repository sau cập nhật hợp đồng Agent ngày 
 
 Hệ thống hiện là một ứng dụng nghiên cứu chứng khoán Việt Nam chạy cục bộ, có giao diện chat Streamlit, NLU hybrid, dữ liệu thật từ `vnstock`, một workflow LangGraph cho phân tích đầy đủ và các route rút gọn cho câu hỏi chuyên biệt. Các mô hình Pydantic được dùng làm contract giữa parser, service, graph, agent và UI.
 
-Phần định lượng tài chính vẫn dùng công thức và ngưỡng deterministic. Khi được cấu hình, OpenAI/Ollama có thể tham gia semantic parsing, specialist review và final commentary; mặc định `STOCK_AGENT_LLM_PROVIDER=mock` nên luồng mặc định không phát sinh phí LLM.
+Phần định lượng tài chính vẫn dùng công thức và ngưỡng deterministic. Profile hiện tại dùng Qwen2.5-3B-Instruct qua endpoint Google Colab có token; OpenAI/Ollama chỉ còn là adapter tùy chọn. Lỗi hoặc timeout LLM không được thay đổi kết quả deterministic.
 
-Khi bật `STOCK_AGENT_LLM_SPECIALISTS_ENABLED`, các vai trò được chọn có thể gọi structured LLM advisor. Trong cấu hình local hiện tại, chỉ Technical dùng LLM làm bộ lập kế hoạch công cụ: LLM đọc tóm tắt từ Data Agent và forecast để chọn tối đa hai kiểm tra bổ sung, còn Python tính toàn bộ giá trị chỉ báo. Kế hoạch được lưu trong `AgentState.llm_reviews` và được tái sử dụng nếu graph yêu cầu phân tích lại; Manager không gọi LLM và vẫn quyết định bằng policy deterministic.
+Khi bật `STOCK_AGENT_LLM_SPECIALISTS_ENABLED`, các vai trò được chọn có thể gọi structured LLM advisor. Trong cấu hình hiện tại, chỉ Technical dùng Qwen làm bộ lập kế hoạch công cụ: model đọc tóm tắt từ Data Agent và forecast để chọn tối đa hai kiểm tra bổ sung, còn Python tính toàn bộ giá trị chỉ báo. Manager dùng cùng endpoint để chọn typed intent và viết một bản tổng hợp grounded sau khi pipeline hoàn tất; recommendation policy vẫn deterministic.
 
 Hệ thống không có broker integration, không có action đặt lệnh và không tự động giao dịch.
 
@@ -39,7 +39,7 @@ flowchart TD
     NLU --> DE[Deterministic entity extraction]
     NLU --> CR[Context resolver]
     NLU --> SP{Configured semantic LLM?}
-    SP -->|OpenAI/Ollama| SQ[Typed SemanticQuery]
+    SP -->|Colab Qwen/OpenAI/Ollama| SQ[Typed SemanticQuery]
     SP -->|mock, absent, or failed| SS[Character n-gram similarity + domain evidence]
     SS --> SQ
     SQ --> IR[IntentRouter: typed bounded task plan]
@@ -91,7 +91,7 @@ flowchart TD
 1. `VietnameseTextNormalizer` bỏ dấu, chuẩn hóa ký tự/whitespace và một số viết tắt/typo domain.
 2. `EntityExtractor` lấy ticker, period, sector, indicator và requested information.
 3. `ContextResolver` xử lý active ticker, danh sách mã gần nhất, tham chiếu theo thứ tự, “cả hai” và một số trường hợp mơ hồ.
-4. Nếu cấu hình OpenAI/Ollama, provider trả trực tiếp `SemanticQuery` theo schema Pydantic.
+4. Nếu bật semantic LLM, Colab Qwen/OpenAI/Ollama trả trực tiếp `SemanticQuery` theo schema Pydantic.
 5. Nếu không có LLM hoặc provider lỗi, `SemanticSimilarityClassifier` dùng cosine similarity trên character trigram của example bank, cộng các domain evidence regex có trọng số.
 6. Parser tạo confidence, ambiguity, clarification, primary intent, secondary intents và telemetry (source, latency, LLM attempted, fallback reason, prompt/example-bank version).
 7. `IntentRouter` chọn task template từ allowlist; nếu cần clarification thì task plan chỉ còn `CHAT`. Validator chặn dependency/input/budget không hợp lệ trước dispatch.
@@ -201,7 +201,7 @@ Hạn chế chính:
 
 ### Manager
 
-`ManagerAgent` lập một plan cố định, phát message, phát hiện conflict, chọn re-analysis hay finalize và áp policy recommendation `BUY/HOLD/WATCH/AVOID`. Manager không gọi LLM. Policy BUY yêu cầu hai specialist cùng BUY, không có veto/HIGH data uncertainty và `evidence_completeness >= 0.75`; confidence cũng giảm theo evidence coverage.
+`ManagerAgent` dùng structured Qwen để xác nhận typed intent trước routing và tạo 4–6 câu tổng hợp sau khi response hoàn tất. Nó vẫn lập plan, phát message, phát hiện conflict, chọn re-analysis/finalize và áp policy recommendation `BUY/HOLD/WATCH/AVOID` bằng code. Policy BUY yêu cầu hai specialist cùng BUY, không có veto/HIGH data uncertainty và `evidence_completeness >= 0.75`; confidence cũng giảm theo evidence coverage.
 
 Recommendation có disclaimer giáo dục nhưng vẫn mang nhãn hành động mạnh. Hệ thống chưa thu thập risk profile, time horizon thực dụng, position context hoặc suitability để các nhãn này đủ tin cậy cho sử dụng đầu tư thật.
 
@@ -312,7 +312,7 @@ Hiện chưa nên dựa vào hệ thống để phân bổ vốn vì:
 - Financial values hiện mang period/unit/source, nhưng vẫn chỉ có một upstream; payload thực tế có thể stale/schema-drift và chưa được đối soát với nguồn chính thức.
 - BUY/HOLD/WATCH/AVOID dựa trên heuristic chưa backtest.
 - Research store có thể trả citation cho corpus official nhỏ; web fallback chỉ hỗ trợ discovery và không thay thế corpus verified, nên vẫn thiếu catalyst, event và narrative risk coverage.
-- Screening chỉ xếp hạng một watchlist tĩnh rất nhỏ, không phải toàn thị trường.
+- Screening xếp hạng một watchlist cấu hình 100 mã bằng technical quick screen và successive halving; đây vẫn không phải toàn thị trường hay point-in-time universe.
 - Comparison chạy từng mã độc lập, chưa chuẩn hóa theo ngành/quy mô/valuation regime.
 - Risk không biết portfolio, position size hay risk tolerance của người dùng.
 - Kết quả test semantic 100% không đồng nghĩa accuracy production.

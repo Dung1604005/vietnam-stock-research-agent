@@ -7,6 +7,7 @@ from pathlib import Path
 from stock_multi_agent.chat.query_parser import QueryParser
 from stock_multi_agent.chat.response import ResponseComposer
 from stock_multi_agent.chat.router import IntentRouter, RoutingPlanValidator
+from stock_multi_agent.agents.manager_agent import ManagerResponseSynthesis, ManagerRouteSelection
 from stock_multi_agent.models.chat import (
     AssistantResponse,
     ChatRole,
@@ -29,6 +30,7 @@ from stock_multi_agent.services.llm_analyst import LLMAnalystService
 from stock_multi_agent.services.rag_service import RAGService
 from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.services.research_orchestrator import ResearchOrchestrator
+from stock_multi_agent.services.recommendation_service import RecommendationService
 from stock_multi_agent.services.screening_service import ScreeningService
 from stock_multi_agent.services.universe_service import UniverseService
 from stock_multi_agent.services.web_research import WebResearchError, WebResearchService
@@ -48,6 +50,7 @@ class ChatService:
         research_orchestrator: ResearchOrchestrator | None = None,
         knowledge_service: KnowledgeService | None = None,
         llm_analyst: LLMAnalystService | None = None,
+        recommendation_service: RecommendationService | None = None,
         universe: dict[str, list[str]] | None = None,
     ) -> None:
         self.analysis = analysis_service or AnalysisService()
@@ -64,6 +67,7 @@ class ChatService:
         self.universes = UniverseService(universe or self._load_universe())
         self.universe = self.universes.groups()
         self.screening = ScreeningService(self.analysis, self.universes)
+        self.recommendations = recommendation_service or RecommendationService(self.screening, self.analysis)
 
     def handle(
         self,
@@ -72,6 +76,28 @@ class ChatService:
         parsed_query: ParsedQuery | None = None,
     ) -> AssistantResponse:
         query = parsed_query or self.parser.parse(user_message, conversation)
+        local_only_intents = {
+            QueryIntent.THEORY,
+            QueryIntent.CURRENT_RULE,
+            QueryIntent.HELP,
+            QueryIntent.EXPLANATION,
+        }
+        if query.intent in local_only_intents:
+            manager_routing = ManagerRouteSelection(
+                selected_intent=query.intent,
+                confidence=query.confidence,
+                rationale="Giữ route local đã xác định; không cần gửi câu hỏi lý thuyết tới LLM.",
+                fallback_reason="local_only_intent",
+            )
+        else:
+            manager_routing = self.analysis.manager_agent.choose_chat_intent(query)
+        if manager_routing.accepted and manager_routing.selected_intent is not query.intent:
+            query = query.model_copy(update={
+                "intent": manager_routing.selected_intent,
+                "confidence": max(query.confidence, manager_routing.confidence),
+                "interpretation": manager_routing.rationale,
+                "parser_source": f"{query.parser_source}+manager_llm",
+            })
         plan = self.router.plan(query, conversation)
         validation_errors = RoutingPlanValidator.validate(plan, query)
         if validation_errors:
@@ -102,6 +128,28 @@ class ChatService:
                     warnings=[f"{type(exc).__name__}: {exc}"],
                 )
 
+        if response.response_type in {
+            ResponseType.ANALYSIS,
+            ResponseType.COMPARISON,
+            ResponseType.MARKET_OVERVIEW,
+            ResponseType.STOCK_LIST,
+        }:
+            manager_synthesis = self.analysis.manager_agent.summarize_response(query, response)
+        else:
+            manager_synthesis = ManagerResponseSynthesis(
+                status="SKIPPED",
+                fallback_reason="unsupported_response_type",
+            )
+        if manager_synthesis.status == "GROUNDED":
+            section = ["\n\n---\n\n### Tổng hợp từ Manager LLM"]
+            section.extend(f"- {line}" for line in manager_synthesis.lines)
+            if manager_synthesis.cited_source_ids:
+                section.append(
+                    "\nNguồn được tham chiếu: "
+                    + ", ".join(f"`{source_id}`" for source_id in manager_synthesis.cited_source_ids)
+                )
+            response.message += "\n".join(section)
+
         if plan.steps:
             response.metadata["routing_plan"] = [step.value for step in plan.steps]
             response.metadata["parsed_intent"] = query.intent.value
@@ -130,6 +178,8 @@ class ChatService:
             "prompt_version": query.prompt_version,
             "example_bank_version": query.example_bank_version,
         }
+        response.metadata["manager_routing"] = manager_routing.model_dump(mode="json")
+        response.metadata["manager_synthesis"] = manager_synthesis.model_dump(mode="json")
         self._update_conversation(conversation, user_message, query, plan.intent, response)
         return response
 
@@ -164,6 +214,12 @@ class ChatService:
                 query.investment_horizon,
                 requested_count=query.requested_result_count,
                 requested_actions=query.requested_actions,
+            )
+        if resolved_intent == QueryIntent.STOCK_RECOMMENDATION:
+            return self._recommend(
+                query.sector,
+                query.investment_horizon,
+                requested_count=query.requested_result_count or 6,
             )
         if resolved_intent == QueryIntent.STOCK_COMPARISON:
             if len(query.tickers) < 2:
@@ -540,22 +596,21 @@ class ChatService:
             eligible_signals = [Signal.SELL]
             minimum_score = 0.0
             ranking_direction = RankingDirection.LOWER_SCORE_FIRST
-        # Guest vnstock access is rate-limited. Evaluate only the requested
-        # cardinality (five for an open-ended request), never a hidden 3x pool.
-        candidate_budget = min(len(universe.tickers), min(10, requested_count or 5))
+        target_count = requested_count or 5
+        candidate_budget = min(len(universe.tickers), 100)
         spec = ScreenSpec(
             universe_key=universe.key,
             maximum_candidates=candidate_budget,
             eligible_signals=eligible_signals,
             minimum_technical_score=minimum_score,
             ranking_direction=ranking_direction,
-            candidate_selection_policy=(
-                "ticker_ascending_prefix_v1" if universe.source_reference else "configured_order_v1"
-            ),
+            candidate_selection_policy="progressive_successive_halving_v1",
+            factor_policy_version="screen-v3-progressive",
         )
-        run = self.screening.run(spec, horizon)
+        run = self.screening.run_progressive(spec, horizon, target_count=min(target_count, candidate_budget))
         ranked_candidates = [candidate for candidate in run.candidates if candidate.status is ScreenStatus.PASS]
-        selected_candidates = ranked_candidates[:requested_count] if requested_count else list(run.candidates)
+        selected_set = set(run.selected_tickers)
+        selected_candidates = [candidate for candidate in ranked_candidates if candidate.ticker in selected_set]
         rows = [
             {
                 "Ticker": candidate.ticker,
@@ -614,6 +669,81 @@ class ChatService:
                 "missing_data_policy": spec.missing_data_policy.value,
                 "price_as_of_aligned": run.price_as_of_aligned,
                 "universe_capture": universe.captured_at.isoformat() if universe.captured_at else None,
+                "progressive_rounds": [item.model_dump(mode="json") for item in run.progressive_rounds],
+            },
+        )
+
+    def _recommend(
+        self,
+        sector: str | None,
+        horizon: str,
+        requested_count: int,
+    ) -> AssistantResponse:
+        universe_key = sector if sector in self.universe else "default"
+        result = self.recommendations.recommend(
+            horizon=horizon,
+            universe_key=universe_key,
+            requested_count=requested_count,
+            max_quick_screen=100,
+        )
+
+        def make_table(title: str, candidates) -> ResponseTable:
+            return ResponseTable(
+                title=title,
+                columns=[
+                    "Ticker", "Rank", "Technical", "Fundamental", "Risk",
+                    "Volatility", "Decision", "Confidence", "As of", "Why",
+                ],
+                rows=[{
+                    "Ticker": item.ticker,
+                    "Rank": item.rank_in_bucket,
+                    "Technical": f"{item.technical_score:.1f}/10",
+                    "Fundamental": f"{item.fundamental_score:.1f}/10",
+                    "Risk": f"{item.risk_score:.1f}/10 ({item.risk_level.value})",
+                    "Volatility": f"{item.volatility:.1%}",
+                    "Decision": item.recommendation.value,
+                    "Confidence": f"{item.confidence:.0%}",
+                    "As of": item.as_of.isoformat() if item.as_of else "unavailable",
+                    "Why": item.reasoning,
+                } for item in candidates],
+                note="Phân loại theo chính sách deterministic dual-recommendation-v1; không phải chỉ dẫn giao dịch.",
+            )
+
+        candidates = [*result.high_reward, *result.safe_picks]
+        newest = max((item.as_of for item in candidates if item.as_of), default=None)
+        tables = [
+            make_table("Lợi nhuận cao – rủi ro cao", result.high_reward),
+            make_table("An toàn – lợi nhuận vừa phải", result.safe_picks),
+        ]
+        if result.returned_count == requested_count:
+            count_note = f"Đã trả về đúng **{result.returned_count}** mã theo yêu cầu."
+        else:
+            count_note = (
+                f"Chỉ có **{result.returned_count}/{requested_count}** mã vượt qua toàn bộ chính sách; "
+                "hệ thống không tự bù bằng mã không đạt chuẩn."
+            )
+        return AssistantResponse(
+            message=(
+                f"### Gợi ý cổ phiếu theo hai nhóm — {result.universe_key}\n\n"
+                f"Đã xét universe **{result.universe_size}** mã, có **{result.screened_count}** mã qua sàng lọc "
+                f"kỹ thuật và phân tích sâu **{result.analyzed_count}** mã. {count_note}\n\n"
+                "Kết quả phục vụ học tập và nghiên cứu, không phải khuyến nghị đầu tư."
+            ),
+            response_type=ResponseType.STOCK_LIST,
+            tickers=[item.ticker for item in candidates],
+            tables=tables,
+            sources=list(dict.fromkeys(source_id for item in candidates for source_id in item.source_ids)),
+            warnings=result.warnings,
+            data_timestamp=newest,
+            metadata={
+                "dual_recommendation": result.model_dump(mode="json"),
+                "requested_result_count": requested_count,
+                "returned_result_count": result.returned_count,
+                "screened_count": result.screened_count,
+                "analyzed_count": result.analyzed_count,
+                "progressive_rounds": [item.model_dump(mode="json") for item in result.progressive_rounds],
+                "deep_analysis_limits": result.deep_analysis_limits,
+                "policy_version": result.policy_version,
             },
         )
 

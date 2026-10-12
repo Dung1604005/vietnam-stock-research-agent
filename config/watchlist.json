@@ -2,7 +2,14 @@
   "default": [
     "FPT", "VNM", "HPG", "MWG", "VCB", "SSI", "TCB", "MBB", "ACB", "BID",
     "CTG", "VPB", "STB", "HCM", "VND", "VHM", "VIC", "VRE", "KDH", "NLG",
-    "GAS", "PLX", "POW", "REE", "SAB", "PNJ", "MSN", "DGC", "GVR", "VJC"
+    "GAS", "PLX", "POW", "REE", "SAB", "PNJ", "MSN", "DGC", "GVR", "VJC",
+    "HVN", "BCM", "BVH", "BSR", "LPB", "SHB", "SSB", "OCB", "EIB", "HDB",
+    "TPB", "VIB", "MSB", "VCI", "SHS", "MBS", "FTS", "BSI", "CTS", "VDS",
+    "DXG", "DIG", "PDR", "NVL", "CEO", "HDC", "KBC", "SZC", "IDC", "GEX",
+    "PC1", "CII", "HHV", "VCG", "CTD", "FCN", "LCG", "CTR", "FRT", "KDC",
+    "QNS", "VHC", "ANV", "DBC", "SBT", "PVS", "PVD", "OIL", "NT2", "PGV",
+    "PVT", "HSG", "NKG", "DCM", "DPM", "BMP", "NTP", "CSV", "CMG", "ELC",
+    "VGI", "FOX", "GMD", "HAH", "VTP", "DHG", "IMP", "TRA", "VGC", "VSH"
   ],
   "technology": ["FPT", "CMG", "ELC", "CTR"],
   "banking": ["VCB", "TCB", "MBB", "ACB"],

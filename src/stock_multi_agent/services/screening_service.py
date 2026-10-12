@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from math import ceil
 
-from stock_multi_agent.models.screening import RankingDirection, ScreenCandidate, ScreenSpec, ScreenStatus, UniverseDefinition
+from stock_multi_agent.models.messages import AgentName
+from stock_multi_agent.models.screening import (
+    ProgressiveScreenRound, RankingDirection, ScreenCandidate, ScreenSpec, ScreenStatus, UniverseDefinition,
+)
 from stock_multi_agent.models.state import TraceEvent
 from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.providers.resilience import is_rate_limit_error
@@ -24,6 +28,8 @@ class ScreenRun:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     price_as_of_aligned: bool = False
+    progressive_rounds: list[ProgressiveScreenRound] = field(default_factory=list)
+    selected_tickers: list[str] = field(default_factory=list)
 
     @property
     def pass_count(self) -> int:
@@ -46,7 +52,12 @@ class ScreeningService:
         result = ScreenRun(universe=universe, spec=spec, started_at=datetime.now().astimezone())
         for index, ticker in enumerate(tickers):
             try:
-                state = self.analysis.analyze_technical(ticker, horizon)
+                state = self.analysis.analyze_technical(
+                    ticker,
+                    horizon,
+                    allow_llm_planning=False,
+                    include_forecast=False,
+                )
                 if state.market_data is None or state.technical_result is None:
                     raise ValueError("Technical analysis returned no structured result")
                 data = state.market_data
@@ -119,4 +130,48 @@ class ScreeningService:
             priority[item.status], item.rank or 10_000, configured_order[item.ticker],
         ))
         result.completed_at = datetime.now().astimezone()
+        return result
+
+    def run_progressive(self, spec: ScreenSpec, horizon: str, target_count: int) -> ScreenRun:
+        """Rank once, then halve the eligible pool until the requested top-K remains.
+
+        Binary search is not valid for an unsorted stock universe. This method
+        evaluates every bounded symbol exactly once, sorts by the disclosed
+        technical policy, and applies successive halving without repeating data
+        calls. Therefore no unevaluated symbol is silently assumed to be weak.
+        """
+        if not 1 <= target_count <= spec.maximum_candidates:
+            raise ValueError("target_count must be within the bounded screening universe")
+        result = self.run(spec, horizon)
+        survivors = [item for item in result.candidates if item.status is ScreenStatus.PASS]
+        round_number = 1
+        while len(survivors) > target_count:
+            input_count = len(survivors)
+            keep_count = max(target_count, ceil(input_count / 2))
+            eliminated = survivors[keep_count:]
+            survivors = survivors[:keep_count]
+            result.progressive_rounds.append(ProgressiveScreenRound(
+                round_number=round_number,
+                input_count=input_count,
+                survivor_count=len(survivors),
+                eliminated_tickers=[item.ticker for item in eliminated],
+            ))
+            result.traces.append(TraceEvent(
+                agent=AgentName.MANAGER,
+                phase="PLAN",
+                action="SUCCESSIVE_HALVING",
+                detail=(
+                    f"Round {round_number}: retained {len(survivors)} of {input_count} "
+                    f"technically ranked candidates; target={target_count}."
+                ),
+            ))
+            round_number += 1
+        if not result.progressive_rounds:
+            result.progressive_rounds.append(ProgressiveScreenRound(
+                round_number=1,
+                input_count=len(survivors),
+                survivor_count=len(survivors),
+                eliminated_tickers=[],
+            ))
+        result.selected_tickers = [item.ticker for item in survivors[:target_count]]
         return result

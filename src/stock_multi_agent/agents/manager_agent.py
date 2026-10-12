@@ -1,10 +1,44 @@
 from __future__ import annotations
 
+import os
+import re
+from typing import Any
+
+from pydantic import BaseModel, Field
+
 from stock_multi_agent.agents.base_agent import BaseAgent
 from stock_multi_agent.models.agent_contracts import AgentSpec, ManagerContext
 from stock_multi_agent.models.analysis import Recommendation, RiskLevel, Signal, FinalDecision
+from stock_multi_agent.models.chat import AssistantResponse, ParsedQuery, QueryIntent, ResponseType
 from stock_multi_agent.models.messages import AgentMessage, AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
+from stock_multi_agent.providers.llm_provider import SemanticLLMProvider, configured_semantic_provider
+
+
+class _ManagerRouteChoice(BaseModel):
+    intent: QueryIntent
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ManagerRouteSelection(BaseModel):
+    selected_intent: QueryIntent
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: str
+    llm_used: bool = False
+    accepted: bool = False
+    fallback_reason: str | None = None
+
+
+class _ManagerSynthesisOutput(BaseModel):
+    lines: list[str] = Field(min_length=4, max_length=6)
+    cited_source_ids: list[str] = Field(default_factory=list, max_length=8)
+
+
+class ManagerResponseSynthesis(BaseModel):
+    status: str
+    lines: list[str] = Field(default_factory=list)
+    cited_source_ids: list[str] = Field(default_factory=list)
+    fallback_reason: str | None = None
 
 
 class ManagerAgent(BaseAgent):
@@ -16,10 +50,11 @@ class ManagerAgent(BaseAgent):
         required_context=[
             "user_goal", "technical_result", "fundamental_result", "risk_result", "research_evidence",
         ],
-        allowed_tools=[],
+        allowed_tools=["structured_semantic_router"],
         output_type="FinalDecision",
-        can_use_llm=False,
+        can_use_llm=True,
         decision_constraints=[
+            "LLM may select only a typed intent; deterministic routing validates and selects executable agents",
             "Do not recompute specialist metrics",
             "Do not emit BUY when a risk veto or HIGH data uncertainty is present",
             "Require sufficient evidence coverage before BUY",
@@ -27,11 +62,160 @@ class ManagerAgent(BaseAgent):
         ],
     )
 
-    def __init__(self, llm_advisor=None) -> None:
-        # Retain the argument for backwards compatibility. The Manager is kept
-        # deterministic; LLM reasoning belongs to bounded specialist tasks.
-        del llm_advisor
-        self.llm_advisor = None
+    def __init__(
+        self,
+        llm_advisor=None,
+        llm_provider: SemanticLLMProvider | None = None,
+        routing_enabled: bool | None = None,
+        synthesis_enabled: bool | None = None,
+    ) -> None:
+        self.llm_advisor = llm_advisor
+        self.llm_provider = llm_provider if llm_provider is not None else configured_semantic_provider()
+        configured = os.getenv("STOCK_AGENT_LLM_MANAGER_ROUTING_ENABLED", "false").strip().lower()
+        self.routing_enabled = routing_enabled if routing_enabled is not None else configured in {
+            "1", "true", "yes", "on",
+        }
+        synthesis_configured = os.getenv("STOCK_AGENT_LLM_MANAGER_SYNTHESIS_ENABLED", "false").strip().lower()
+        self.synthesis_enabled = synthesis_enabled if synthesis_enabled is not None else synthesis_configured in {
+            "1", "true", "yes", "on",
+        }
+
+    def summarize_response(self, query: ParsedQuery, response: AssistantResponse) -> ManagerResponseSynthesis:
+        """Create one grounded Vietnamese summary after all deterministic work is complete."""
+        if not self.synthesis_enabled:
+            return ManagerResponseSynthesis(status="SKIPPED", fallback_reason="manager_synthesis_disabled")
+        if self.llm_provider is None:
+            return ManagerResponseSynthesis(status="UNAVAILABLE", fallback_reason="no_configured_llm")
+        if response.response_type not in {
+            ResponseType.ANALYSIS,
+            ResponseType.COMPARISON,
+            ResponseType.MARKET_OVERVIEW,
+            ResponseType.STOCK_LIST,
+        }:
+            return ManagerResponseSynthesis(status="SKIPPED", fallback_reason="unsupported_response_type")
+
+        allowed_source_ids = list(dict.fromkeys(item.source_id for item in response.source_details))[:20]
+        safe_metadata_keys = {
+            "recommendation", "confidence", "technical_score", "technical_signal",
+            "fundamental_score", "fundamental_signal", "risk_score", "risk_level", "veto",
+            "requested_count", "returned_count", "screen_status", "forecast_status",
+        }
+        facts: dict[str, Any] = {
+            "user_request": query.raw_query[:800],
+            "intent": query.intent.value,
+            "tickers": response.tickers[:12],
+            "investment_horizon": query.investment_horizon,
+            "deterministic_response": response.message[:3500],
+            "tables": [
+                {
+                    "title": table.title,
+                    "rows": table.rows[:10],
+                    "note": table.note,
+                }
+                for table in response.tables[:2]
+            ],
+            "decision_facts": {
+                key: value for key, value in response.metadata.items() if key in safe_metadata_keys
+            },
+            "warnings": response.warnings[:6],
+            "allowed_source_ids": allowed_source_ids,
+        }
+        system = """Bạn là Manager Agent của hệ thống nghiên cứu chứng khoán Việt Nam.
+Từ facts đã được các agent và Python tính xong, hãy viết 4 đến 6 câu tiếng Việt ngắn để tổng kết:
+mục tiêu người dùng, bằng chứng chính, điểm mâu thuẫn hoặc bất định, và kết luận hiện có.
+Không tự tính lại, không thay đổi số liệu, tín hiệu, dự báo, điểm số hay kết luận deterministic.
+Không tạo nguồn mới và chỉ trích dẫn mã có trong allowed_source_ids. Không đưa ra cam kết lợi nhuận hay lệnh giao dịch.
+Mỗi phần tử lines là đúng một câu tiếng Việt; trả về đúng JSON schema."""
+        try:
+            result = self.llm_provider.parse_structured(system, facts, _ManagerSynthesisOutput)
+        except Exception as exc:
+            return ManagerResponseSynthesis(
+                status="UNAVAILABLE",
+                fallback_reason=f"manager_synthesis_error:{type(exc).__name__}",
+            )
+        joined = " ".join(result.lines)
+        if re.search(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff]", joined):
+            return ManagerResponseSynthesis(status="UNAVAILABLE", fallback_reason="non_vietnamese_output")
+        allowed = set(allowed_source_ids)
+        return ManagerResponseSynthesis(
+            status="GROUNDED",
+            lines=[line.strip() for line in result.lines if line.strip()],
+            cited_source_ids=[item for item in result.cited_source_ids if item in allowed],
+        )
+
+    def choose_chat_intent(self, query: ParsedQuery) -> ManagerRouteSelection:
+        """Let the LLM interpret the request, then keep execution behind typed guards."""
+        fallback = ManagerRouteSelection(
+            selected_intent=query.intent,
+            confidence=query.confidence,
+            rationale="Giữ kết quả semantic parser và deterministic router.",
+        )
+        if not self.routing_enabled:
+            return fallback.model_copy(update={"fallback_reason": "manager_llm_routing_disabled"})
+        if self.llm_provider is None:
+            return fallback.model_copy(update={"fallback_reason": "no_configured_llm"})
+        if query.needs_clarification:
+            return fallback.model_copy(update={"fallback_reason": "query_requires_clarification"})
+
+        system = """Bạn là Manager Agent điều phối hệ thống nghiên cứu chứng khoán Việt Nam.
+Hãy xác định đúng một intent từ JSON schema dựa trên câu hỏi và các entity đã trích xuất.
+STOCK_RECOMMENDATION dùng khi người dùng hỏi nên mua/đầu tư mã nào hoặc yêu cầu top mã để mua.
+STOCK_DISCOVERY chỉ dùng cho sàng lọc trung lập như mã đáng chú ý, RSI thấp hoặc lọc theo ngành.
+Không tự tạo ticker, số lượng hay dữ liệu. Bạn chỉ chọn intent; deterministic router sẽ chọn agent và
+kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội dung ngoài schema."""
+        payload = {
+            "query": query.raw_query,
+            "normalized_query": query.normalized_query,
+            "semantic_intent": query.intent.value,
+            "tickers": query.tickers,
+            "sector": query.sector,
+            "requested_result_count": query.requested_result_count,
+            "requested_actions": query.requested_actions,
+            "requested_indicators": query.requested_indicators,
+            "investment_horizon": query.investment_horizon,
+            "allowed_intents": [item.value for item in QueryIntent],
+        }
+        try:
+            choice = self.llm_provider.parse_structured(system, payload, _ManagerRouteChoice)
+        except Exception as exc:
+            return fallback.model_copy(update={
+                "fallback_reason": f"manager_llm_error:{type(exc).__name__}",
+            })
+
+        invalid_reason = self._invalid_chat_intent(query, choice.intent)
+        if invalid_reason:
+            return fallback.model_copy(update={
+                "llm_used": True,
+                "fallback_reason": invalid_reason,
+            })
+        return ManagerRouteSelection(
+            selected_intent=choice.intent,
+            confidence=choice.confidence,
+            rationale=f"Manager LLM chọn intent {choice.intent.value}; deterministic router sẽ kiểm tra và chọn agent.",
+            llm_used=True,
+            accepted=True,
+        )
+
+    @staticmethod
+    def _invalid_chat_intent(query: ParsedQuery, intent: QueryIntent) -> str | None:
+        ticker_required = {
+            QueryIntent.STOCK_ANALYSIS,
+            QueryIntent.TECHNICAL_ANALYSIS,
+            QueryIntent.FUNDAMENTAL_ANALYSIS,
+            QueryIntent.RISK_ANALYSIS,
+            QueryIntent.STOCK_CHART,
+            QueryIntent.INDICATOR_QUERY,
+            QueryIntent.MIXED,
+        }
+        if intent in ticker_required and not query.tickers:
+            return "manager_selected_intent_without_required_ticker"
+        if intent is QueryIntent.STOCK_COMPARISON and len(query.tickers) < 2:
+            return "manager_selected_comparison_without_two_tickers"
+        if intent is QueryIntent.STOCK_RECOMMENDATION and query.tickers:
+            return "manager_selected_universe_recommendation_for_named_ticker"
+        if not query.tickers and "BUY" in query.requested_actions and intent is not QueryIntent.STOCK_RECOMMENDATION:
+            return "explicit_buy_shortlist_must_use_recommendation"
+        return None
 
     def plan(self, state: AgentState) -> dict[str, object]:
         context = ManagerContext.from_state(state)

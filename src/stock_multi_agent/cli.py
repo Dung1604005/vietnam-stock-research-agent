@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 
+from stock_multi_agent.config import load_workspace_env
 from stock_multi_agent.services.analysis_service import AnalysisService
 
 
 def main() -> None:
+    load_workspace_env()
     parser = argparse.ArgumentParser(description="Five-agent Vietnamese stock analysis demo")
     parser.add_argument("ticker", help="Vietnamese stock ticker, e.g. FPT")
     parser.add_argument("--horizon", default="3 months")
