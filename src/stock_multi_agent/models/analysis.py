@@ -148,7 +148,7 @@ class FundamentalAnalysis(BaseModel):
     evidence: list[EvidenceItem]
     reasoning_summary: str
     sector_template: str = "UNKNOWN"
-    policy_version: str = "fundamental-v2"
+    policy_version: str = "fundamental-v3-quality-weighted"
     feature_contributions: dict[str, float] = Field(default_factory=dict)
     unavailable_metrics: list[str] = Field(default_factory=list)
 

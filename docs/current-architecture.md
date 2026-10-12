@@ -49,7 +49,8 @@ flowchart TD
     AS --> LG[StockAgentGraph]
     CS -->|technical/fundamental/risk/chart| AS
     CS -->|market/discovery/comparison| LOCAL[ChatService methods]
-    CS -->|research intent| RS[ResearchStore · SQLite FTS]
+    CS -->|research intent| RAG[RAGService · embedding + synthesis]
+    RAG --> RS[ResearchStore · SQLite vectors + FTS5]
     RS -->|local miss only| WR[WebResearchService · bounded discovery]
     CS -->|THEORY / CURRENT_RULE / MIXED| KS[KnowledgeService · deterministic]
     KS --> KB[(Knowledge SQLite + FTS5)]
@@ -78,7 +79,7 @@ flowchart TD
 - `IntentRouter` tạo `RoutingPlan` gồm typed task (`id`, dependency, required input, expected output, timeout, budget). Plan được deterministic validator kiểm tra trước dispatch. Mapping intent → task template vẫn được viết cố định trong code; đây chưa phải một DAG executor động.
 - Chỉ full analysis chạy qua `StockAgentGraph`. Technical, Fundamental và Risk riêng lẻ được `AnalysisService` gọi trực tiếp. Discovery, comparison và market overview được điều phối bằng vòng lặp/method trong `ChatService`.
 - `ChatService` hiện là application service lớn nhất: parsing, dispatch, error handling, market overview, screening, comparison, chart composition, explanation và cập nhật memory đều hội tụ tại đây.
-- Research route search corpus local đã ingest với URL/publisher/published timestamp/checksum trước. Khi local miss có ticker, `WebResearchService` thử trang issuer/disclosure HNX theo mã trước để xử lý ticker ngắn/đa nghĩa; sau đó mới dùng web discovery giới hạn. `ResearchOrchestrator` fetch/extract HTML public có giới hạn và trả quote-level external evidence với canonical URL/hash/timestamp khi thành công. Kết quả external không được ingest hay mang nhãn verified local; discovery chưa fetch không được dùng tạo claim.
+- Research route embedding câu hỏi, tìm chunk bằng cosine similarity, hybrid merge với FTS5 rồi dùng structured LLM tổng hợp tối đa hai claim có source ID hợp lệ. Vector normalized float32 nằm trong cùng SQLite và corpus cũ được backfill tự động. Khi local miss có ticker, `WebResearchService` thử trang issuer/disclosure HNX rồi mới dùng web discovery giới hạn. `ResearchOrchestrator` fetch/extract HTML public và trả quote-level external evidence; external result không tự động được ingest hay mang nhãn verified local.
 - Knowledge route là `KnowledgeService` deterministic, không phải Agent. Nó dùng database riêng `.runtime/knowledge/knowledge.sqlite3`, exact match + FTS5/BM25 + topic/source/freshness weighting + RRF và citation tới document/chunk. `THEORY` không gọi market provider; `CURRENT_RULE` gắn freshness warning; `MIXED` ghép evidence lý thuyết với dữ liệu thật mà không cho KB điều khiển recommendation.
 
 ## 4. Semantic understanding và routing
@@ -211,7 +212,7 @@ Recommendation có disclaimer giáo dục nhưng vẫn mang nhãn hành động 
 | `ManagerAgent` | Có tổng hợp/conflict policy | Có plan nhưng hard-code | Re-analyze hoặc finalize | Component agent-like rõ nhất | Giữ làm bounded Supervisor với typed task plan |
 | `IntentRouter` | Không | Mapping cố định | Route theo enum | Router/service, không phải agent | Giữ deterministic policy hoặc planner có guardrail |
 | `ChartService` | Không | Không | Chọn chart từ typed request | Service deterministic đúng vai trò | Giữ nguyên nguyên tắc |
-| `ResearchStore` / `WebResearchService` / research route | Không | Không | Local FTS trước, web discovery khi local miss | Deterministic services, không phải agent; web result tách khỏi verified evidence | Giữ retriever là service; chỉ thêm Research Agent nếu sau này cần lập sub-question/evidence plan |
+| `RAGService` / `ResearchStore` / `WebResearchService` | LLM chỉ tổng hợp evidence đã retrieve | Không | Vector+FTS local trước, web discovery khi local miss | Retriever/indexer là deterministic service; generation bị khóa bằng source ID | Giữ retriever là service; chỉ thêm Research Agent nếu sau này cần multi-step planning |
 
 Không cần duy trì đúng năm agent ở kiến trúc sản phẩm. Ranh giới nên dựa vào quyền ra quyết định, không dựa vào tên class hay việc class có emit message.
 

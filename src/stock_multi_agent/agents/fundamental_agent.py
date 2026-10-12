@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from stock_multi_agent.agents.base_agent import BaseAgent
-from stock_multi_agent.models.analysis import EvidenceItem, FinancialMetrics, FundamentalAnalysis, Signal
+from stock_multi_agent.models.analysis import EvidenceItem, FundamentalAnalysis, Signal
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.tools.financial_data import FinancialToolkit
@@ -19,47 +19,33 @@ class FundamentalAgent(BaseAgent):
         if state.market_data is None:
             raise ValueError("Fundamental Agent requires market data")
         metrics = state.market_data.financials
-        blocking_quality_codes = {
-            issue.code
-            for issue in state.market_data.quality_report.issues
-            if issue.code in {"STALE_FINANCIALS", "MISSING_FINANCIAL_PERIOD"}
-        }
+        evidence_reliability, quality_notes = self._financial_reliability(state)
+        statement_metrics = self._statement_metrics(state)
         stale_ratio_metrics = any(
             issue.code == "STALE_FINANCIAL_RATIOS"
             for issue in state.market_data.quality_report.issues
         )
         if stale_ratio_metrics:
-            # Never mix a stale valuation/ratio payload into a current
-            # statement-based assessment. The statement metrics below remain
-            # eligible because they carry their own reporting-period lineage.
-            metrics = FinancialMetrics()
+            # Current, period-labelled statements take precedence for metrics
+            # they can calculate. Other stale ratios remain usable at reduced weight.
+            metrics = metrics.model_copy(update={
+                **({"revenue_growth": None} if statement_metrics.get("revenue_growth") is not None else {}),
+                **({"profit_growth": None} if statement_metrics.get("profit_growth") is not None else {}),
+            })
         available = metrics.available_count()
-        statement_metrics = self._statement_metrics(state)
         statement_coverage = sum(
             statement_metrics.get(name) is not None
             for name in ("revenue_growth", "profit_growth", "cash_conversion")
         )
         traces = [self.event("OBSERVE", "READ_FINANCIALS", f"Observe {available}/10 normalized financial metrics")]
-        if blocking_quality_codes:
-            details = ", ".join(sorted(blocking_quality_codes))
+        if available == 0 and statement_coverage == 0:
             result = FundamentalAnalysis(
-                signal=Signal.UNKNOWN,
-                score=5,
-                confidence=0.1,
-                strengths=[],
-                weaknesses=["Financial evidence is stale or lacks a verifiable reporting period"],
-                evidence=[self._evidence(state, "Data quality", f"Scoring blocked: {details}", ["quality_report"])],
-                reasoning_summary="Fundamental scoring was withheld because reporting-period provenance is not reliable enough.",
+                signal=Signal.UNKNOWN, score=5, confidence=0.1,
+                strengths=[], weaknesses=["No usable financial metric or multi-period statement evidence is available"],
+                evidence=[self._evidence(state, "Metric coverage", "No usable financial metric is available", ["financials"])],
+                reasoning_summary="Fundamental evidence is absent; no valuation conclusion is made.",
                 sector_template=self._sector_template(state),
-            )
-            traces.append(self.event("REASON", "ABSTAIN", f"Blocked deterministic scoring: {details}"))
-        elif available < 3 and statement_coverage == 0:
-            result = FundamentalAnalysis(
-                signal=Signal.UNKNOWN, score=5, confidence=max(0.1, available / 10),
-                strengths=[], weaknesses=["Too few current financial metrics"],
-                evidence=[self._evidence(state, "Metric coverage", f"{available}/10 normalized financial metrics are available", ["financials"])],
-                reasoning_summary="Fundamental evidence is insufficient; no valuation conclusion is made.",
-                sector_template=self._sector_template(state),
+                policy_version="fundamental-v3-quality-weighted",
             )
         else:
             score = 5.0
@@ -152,14 +138,25 @@ class FundamentalAgent(BaseAgent):
                 contributions["cash_conversion"] = 0.4 if value >= 0.8 else -0.6 if value < 0 else 0.0
                 score += contributions["cash_conversion"]
 
+            raw_score = max(0.0, min(10.0, score))
+            quality_penalty = 0.75 * (1.0 - evidence_reliability)
+            score = 5.0 + (raw_score - 5.0) * evidence_reliability - quality_penalty
             score = max(0.0, min(10.0, score))
+            if quality_notes:
+                weaknesses.extend(quality_notes)
+                contributions["data_quality_penalty"] = round(-quality_penalty, 3)
             signal = Signal.BUY if score >= 7.2 else Signal.HOLD if score >= 4.2 else Signal.SELL
-            confidence = min(0.9, 0.35 + self.tools.completeness(metrics) * 0.6 + 0.05 * statement_coverage)
+            coverage_confidence = min(0.9, 0.35 + self.tools.completeness(metrics) * 0.6 + 0.05 * statement_coverage)
+            confidence = max(0.1, coverage_confidence * evidence_reliability)
             result = FundamentalAnalysis(
                 signal=signal, score=round(score, 2), confidence=round(confidence, 2),
                 strengths=strengths, weaknesses=weaknesses, evidence=evidence,
-                reasoning_summary=f"Growth, quality, valuation, leverage and cash-flow evidence imply {signal.value}; score {score:.1f}/10.",
+                reasoning_summary=(
+                    f"Available growth, quality, valuation, leverage and cash-flow evidence imply {signal.value}; "
+                    f"quality-weighted score {score:.1f}/10 (raw {raw_score:.1f}, evidence reliability {evidence_reliability:.0%})."
+                ),
                 sector_template=template,
+                policy_version="fundamental-v3-quality-weighted",
                 feature_contributions=contributions,
                 unavailable_metrics=[
                     name for name, value in metrics.model_dump().items() if value is None
@@ -168,7 +165,10 @@ class FundamentalAgent(BaseAgent):
                     "TTM statement series", "valuation history", "dilution/dividend history"
                 ],
             )
-            traces.append(self.event("REASON", "SCORE_FUNDAMENTALS", f"Independent fundamental score={score:.1f}/10"))
+            traces.append(self.event(
+                "REASON", "SCORE_FUNDAMENTALS",
+                f"Quality-weighted fundamental score={score:.1f}/10; raw={raw_score:.1f}; reliability={evidence_reliability:.0%}",
+            ))
 
         source_ids = [source.source_id for source in state.market_data.source_refs]
         llm_review = self.llm_review(
@@ -256,14 +256,53 @@ class FundamentalAgent(BaseAgent):
     @staticmethod
     def _evidence(state: AgentState, label: str, value: str, fields: list[str]) -> EvidenceItem:
         data = state.market_data
+        confidence, quality_notes = FundamentalAgent._financial_reliability(state)
+        financial_periods = [
+            observation.period_end
+            for observation in [
+                *(data.financial_observations if data else []),
+                *(data.financial_statement_observations if data else []),
+            ]
+            if observation.period_end is not None
+        ]
+        observation_source_ids = {
+            observation.source_id
+            for observation in [
+                *(data.financial_observations if data else []),
+                *(data.financial_statement_observations if data else []),
+            ]
+        }
         return EvidenceItem(
             label=label,
             value=value,
             input_fields=fields,
-            source_ids=[
+            source_ids=sorted(observation_source_ids | ({
                 source.source_id for source in data.source_refs
                 if source.data_kind.value in {"FINANCIAL_RATIOS", "INCOME_STATEMENT", "BALANCE_SHEET", "CASH_FLOW"}
-            ] if data else [],
-            as_of=data.as_of if data else None,
-            confidence=1.0,
+            } if data else set())),
+            as_of=max(financial_periods) if financial_periods else None,
+            confidence=confidence,
+            note="; ".join(quality_notes) if quality_notes else None,
         )
+
+    @staticmethod
+    def _financial_reliability(state: AgentState) -> tuple[float, list[str]]:
+        """Map declared data-quality limitations to evidence weight without inventing values."""
+        if state.market_data is None:
+            return 0.1, ["Financial data is unavailable"]
+        reliability_by_code = {
+            "MISSING_SOURCE_REF": 0.35,
+            "STALE_FINANCIALS": 0.50,
+            "MISSING_FINANCIAL_PERIOD": 0.55,
+            "INSUFFICIENT_FINANCIALS": 0.60,
+            "STALE_FINANCIAL_RATIOS": 0.65,
+        }
+        relevant_issues = [
+            issue for issue in state.market_data.quality_report.issues
+            if issue.code in reliability_by_code
+        ]
+        reliability = min(
+            [1.0, *(reliability_by_code[issue.code] for issue in relevant_issues)],
+        )
+        notes = [f"Lower-quality evidence ({issue.code}): {issue.message}" for issue in relevant_issues]
+        return reliability, notes

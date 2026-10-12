@@ -24,8 +24,10 @@ class KnowledgeService:
         self.enabled = os.getenv("STOCK_AGENT_KNOWLEDGE_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
         self.seed_manifest = seed_manifest or Path(__file__).resolve().parents[3] / "knowledge" / "sources.json"
         self.bootstrap_warning: str | None = None
+        self.graph_sync_status: dict[str, int | str | bool] = {"available": False, "documents": 0}
         if bootstrap and self.enabled:
             self.ensure_seeded()
+            self.graph_sync_status = self.store.sync_knowledge_graph()
 
     def ensure_seeded(self) -> None:
         if self.store.count_documents() or not self.seed_manifest.is_file():
@@ -68,6 +70,16 @@ class KnowledgeService:
             seen_quotes.add(quote)
             sections.append(f"{quote}\n\n*Bằng chứng: [{index}]*")
 
+        graph_context = result.graph_context
+        if graph_context and graph_context.paths:
+            relation_lines: list[str] = []
+            for path in graph_context.paths[:3]:
+                parts = [path.labels[0]]
+                for relation, label in zip(path.relations, path.labels[1:]):
+                    parts.extend([f"--{relation.value}-->", label])
+                relation_lines.append(f"- {' '.join(parts)}")
+            sections.append("#### Quan hệ từ Knowledge Graph (Neo4j)\n\n" + "\n".join(relation_lines))
+
         source_lines = []
         warnings: list[str] = []
         for index, citation in enumerate(result.citations, 1):
@@ -96,8 +108,13 @@ class KnowledgeService:
                 "knowledge_result": result.model_dump(mode="json"),
                 "knowledge_citations": [item.model_dump(mode="json") for item in result.citations],
                 "retrieval_mode": "knowledge_local",
+                "knowledge_retrieval_mode": result.retrieval_mode,
                 "evidence_origin": "Local KB",
                 "freshness_checked": bool(current_rule or result.requires_freshness_check),
+                "knowledge_graph": (
+                    result.graph_context.model_dump(mode="json") if result.graph_context else None
+                ),
+                "knowledge_graph_sync": self.graph_sync_status,
             },
         )
 

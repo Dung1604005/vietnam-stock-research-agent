@@ -23,6 +23,23 @@ class VerificationStatus(str, Enum):
     UNVERIFIED = "UNVERIFIED"
 
 
+class KnowledgeNodeType(str, Enum):
+    DOCUMENT = "DOCUMENT"
+    TOPIC = "TOPIC"
+    CONCEPT = "CONCEPT"
+    SECTION = "SECTION"
+    PUBLISHER = "PUBLISHER"
+
+
+class KnowledgeRelationType(str, Enum):
+    HAS_TOPIC = "HAS_TOPIC"
+    MENTIONS = "MENTIONS"
+    HAS_SECTION = "HAS_SECTION"
+    PUBLISHED_BY = "PUBLISHED_BY"
+    ABOUT_TOPIC = "ABOUT_TOPIC"
+    CO_OCCURS_WITH = "CO_OCCURS_WITH"
+
+
 class KnowledgeDocument(BaseModel):
     document_id: str = Field(min_length=16, max_length=128)
     title: str = Field(min_length=1, max_length=500)
@@ -80,11 +97,38 @@ class KnowledgeCitation(BaseModel):
     freshness_warning: str | None = None
 
 
+class KnowledgeGraphNode(BaseModel):
+    node_id: str = Field(min_length=3, max_length=180)
+    node_type: KnowledgeNodeType
+    label: str = Field(min_length=1, max_length=500)
+    aliases: list[str] = Field(default_factory=list)
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class KnowledgeGraphPath(BaseModel):
+    node_ids: list[str] = Field(min_length=2)
+    labels: list[str] = Field(min_length=2)
+    relations: list[KnowledgeRelationType] = Field(min_length=1)
+    score: float = Field(ge=0.0)
+    evidence_document_id: str | None = None
+    evidence_chunk_id: str | None = None
+
+
+class KnowledgeGraphContext(BaseModel):
+    query: str = Field(min_length=1, max_length=1000)
+    matched_nodes: list[KnowledgeGraphNode] = Field(default_factory=list)
+    paths: list[KnowledgeGraphPath] = Field(default_factory=list)
+    related_document_ids: list[str] = Field(default_factory=list)
+    expansion_terms: list[str] = Field(default_factory=list)
+    retrieval_note: str = ""
+
+
 class KnowledgeSearchResult(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     citations: list[KnowledgeCitation] = Field(default_factory=list)
     retrieval_note: str
     retrieval_mode: str = "lexical"
     requires_freshness_check: bool = False
+    graph_context: KnowledgeGraphContext | None = None
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

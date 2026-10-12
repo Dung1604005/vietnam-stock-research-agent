@@ -32,6 +32,40 @@ def test_risk_vetoes_volatile_conflicting_case(market_data) -> None:
     assert any("disagree" in item for item in result.criticisms)
 
 
+def test_missing_fundamental_evidence_is_uncertainty_not_automatic_high_risk(market_data) -> None:
+    stable_bars = [
+        bar.model_copy(update={
+            "open": 100.0 + index * 0.02,
+            "high": 100.2 + index * 0.02,
+            "low": 99.8 + index * 0.02,
+            "close": 100.0 + index * 0.02,
+            "volume": 20_000_000,
+        })
+        for index, bar in enumerate(market_data.bars)
+    ]
+    state = AgentState(
+        ticker="FPT",
+        investment_horizon="3 months",
+        user_goal="Analyze FPT",
+        market_data=market_data.model_copy(update={"bars": stable_bars}),
+        technical_result=TechnicalAnalysis(
+            signal=Signal.HOLD, score=5, confidence=0.75, evidence=[], risks=[],
+            tools_used=[], reasoning_summary="Neutral", timeframe="3 months",
+        ),
+        fundamental_result=FundamentalAnalysis(
+            signal=Signal.UNKNOWN, score=5, confidence=0.2, strengths=[], weaknesses=[],
+            evidence=[], reasoning_summary="Insufficient financial evidence",
+        ),
+    )
+
+    result = RiskAgent(TechnicalIndicatorToolkit()).run(state)["risk_result"]
+
+    assert result.risk_level is RiskLevel.MEDIUM
+    assert result.risk_score < 3.5
+    assert result.veto is False
+    assert result.policy_version == "risk-v3-balanced"
+
+
 def test_manager_detects_conflict_and_routes_reanalysis(market_data) -> None:
     state = _state_with_results(market_data)
     state.risk_result = RiskAnalysis(

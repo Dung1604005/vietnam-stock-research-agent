@@ -26,6 +26,7 @@ from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.chart_service import ChartService
 from stock_multi_agent.services.knowledge_service import KnowledgeService
 from stock_multi_agent.services.llm_analyst import LLMAnalystService
+from stock_multi_agent.services.rag_service import RAGService
 from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.services.research_orchestrator import ResearchOrchestrator
 from stock_multi_agent.services.screening_service import ScreeningService
@@ -42,6 +43,7 @@ class ChatService:
         intent_router: IntentRouter | None = None,
         chart_service: ChartService | None = None,
         research_store: ResearchStore | None = None,
+        rag_service: RAGService | None = None,
         web_research: WebResearchService | None = None,
         research_orchestrator: ResearchOrchestrator | None = None,
         knowledge_service: KnowledgeService | None = None,
@@ -53,6 +55,7 @@ class ChatService:
         self.router = intent_router or IntentRouter()
         self.charts = chart_service or ChartService()
         self.research = research_store or ResearchStore()
+        self.rag = rag_service or RAGService(self.research)
         self.web_research = web_research or WebResearchService()
         self.research_orchestrator = research_orchestrator or ResearchOrchestrator(discovery=self.web_research)
         self.knowledge = knowledge_service or KnowledgeService()
@@ -272,21 +275,38 @@ class ChatService:
 
     def _research(self, query: ParsedQuery) -> AssistantResponse:
         ticker = query.tickers[0] if query.tickers else None
-        bundle = self.research.search(query.raw_query, ticker=ticker)
+        rag_execution = self.rag.answer(query.raw_query, ticker=ticker)
+        bundle = rag_execution.bundle
         if bundle.citations:
             rows = [{
                 "Title": citation.title,
                 "Publisher": citation.publisher,
                 "Published": citation.published_at.date().isoformat(),
                 "Source": str(citation.source_url),
+                "Similarity": round(citation.retrieval_score, 3),
+                "Retrieval": ", ".join(citation.retrieval_modes),
                 "Excerpt": citation.quote,
             } for citation in bundle.citations]
             return AssistantResponse(
-                message=f"### Research evidence{f' · {ticker}' if ticker else ''}\n\n{bundle.retrieval_note}",
+                message=(
+                    rag_execution.message
+                    if rag_execution.status == "GROUNDED"
+                    else f"### Research evidence{f' · {ticker}' if ticker else ''}\n\n{bundle.retrieval_note}\n\n{rag_execution.message}"
+                ),
                 tickers=query.tickers,
                 tables=[ResponseTable(title="Verified local citations", columns=list(rows[0]), rows=rows)],
                 sources=[str(citation.source_url) for citation in bundle.citations],
-                metadata={"evidence_bundle": bundle.model_dump(mode="json"), "retrieval_mode": "local"},
+                warnings=[rag_execution.error] if rag_execution.error else [],
+                metadata={
+                    "evidence_bundle": bundle.model_dump(mode="json"),
+                    "retrieval_mode": "local",
+                    "rag": {
+                        "status": rag_execution.status,
+                        "embedding_model": getattr(self.research.embedding_provider, "model_id", None),
+                        "retrieval": "vector+fts5",
+                        "cited_chunk_ids": rag_execution.cited_chunk_ids,
+                    },
+                },
             )
 
         execution = self.research_orchestrator.research(query.raw_query, ticker=ticker)

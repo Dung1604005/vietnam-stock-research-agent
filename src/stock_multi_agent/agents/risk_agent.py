@@ -49,26 +49,37 @@ class RiskAgent(BaseAgent):
         elif drawdown > 0.15:
             score += 1.0
 
-        if technical.signal != fundamental.signal:
-            score += 2.0
-            criticisms.append(f"Agents disagree: Technical={technical.signal.value}, Fundamental={fundamental.signal.value}.")
-        if Signal.UNKNOWN in (technical.signal, fundamental.signal):
-            score += 2.0
-            warnings.append("At least one specialist has insufficient evidence (UNKNOWN).")
-        if min(technical.confidence, fundamental.confidence) < 0.5:
+        has_unknown_signal = Signal.UNKNOWN in (technical.signal, fundamental.signal)
+        if not has_unknown_signal and technical.signal != fundamental.signal:
             score += 1.0
+            criticisms.append(f"Agents disagree: Technical={technical.signal.value}, Fundamental={fundamental.signal.value}.")
+        if has_unknown_signal:
+            # Missing evidence is uncertainty, not proof that the issuer itself is risky.
+            # Keep a small prudence premium and express the larger effect through confidence.
+            score += 0.75
+            warnings.append("At least one specialist has insufficient evidence (UNKNOWN).")
+        elif min(technical.confidence, fundamental.confidence) < 0.5:
+            score += 0.5
             warnings.append("At least one specialist confidence is below 0.50.")
         min_traded_value = self._minimum_traded_value()
         if average_traded_value < min_traded_value:
-            score += 1.5
+            score += 1.0
             criticisms.append(f"Liquidity is below the configured average traded-value filter ({average_traded_value:,.0f} VND).")
         quality_issues = state.market_data.quality_report.issues
         if quality_issues:
-            score += min(1.5, 0.25 * len(quality_issues))
+            # Quality issues lower confidence below; counting every issue in the risk
+            # score duplicated stale/missing-data penalties and made HIGH nearly automatic.
             warnings.append(f"Data-quality warnings affect confidence ({len(quality_issues)} issue(s)).")
-        if state.market_data.financials.debt_to_equity is not None and state.market_data.financials.debt_to_equity > 1.5:
-            score += 1.0
-            criticisms.append("Leverage is elevated according to the available debt/equity metric.")
+        debt_to_equity = state.market_data.financials.debt_to_equity
+        sector = state.market_data.instrument.sector if state.market_data.instrument else None
+        financial_sector = self._is_financial_sector(sector)
+        if debt_to_equity is not None and not financial_sector:
+            if debt_to_equity > 2.0:
+                score += 1.0
+                criticisms.append("Leverage is high according to the available debt/equity metric.")
+            elif debt_to_equity > 1.5:
+                score += 0.5
+                criticisms.append("Leverage is elevated according to the available debt/equity metric.")
         event_refs = [source for source in state.market_data.source_refs if source.data_kind is DataKind.ISSUER_EVENTS]
         current_as_of = state.market_data.as_of or state.market_data.bars[-1].date
         recent_events = sorted(
@@ -76,7 +87,8 @@ class RiskAgent(BaseAgent):
             key=lambda event: event.event_date,
             reverse=True,
         )[:3]
-        if any(event.event_code == "SUSP" for event in recent_events):
+        has_trading_suspension = any(event.event_code == "SUSP" for event in recent_events)
+        if has_trading_suspension:
             score += 2.0
             criticisms.append("An issuer event reports a trading suspension; verify the official disclosure before acting.")
         position_total = sum(position.weight for position in state.portfolio_positions)
@@ -84,13 +96,17 @@ class RiskAgent(BaseAgent):
         concentration = sum(weight ** 2 for weight in normalized_weights)
         max_weight = max(normalized_weights, default=0.0)
         if max_weight >= 0.5:
-            score += 1.5
+            score += 1.0
             criticisms.append(f"Portfolio concentration is high (largest normalized position {max_weight:.0%}).")
         elif max_weight >= 0.3:
-            score += 0.75
+            score += 0.5
         score = min(10.0, score)
-        level = RiskLevel.HIGH if score >= 7 else RiskLevel.MEDIUM if score >= 4 else RiskLevel.LOW
-        veto = score >= 8 or (level == RiskLevel.HIGH and Signal.UNKNOWN in (technical.signal, fundamental.signal))
+        level = RiskLevel.HIGH if score >= 7.5 else RiskLevel.MEDIUM if score >= 3.5 else RiskLevel.LOW
+        if has_unknown_signal and level is RiskLevel.LOW:
+            # Do not claim LOW risk when evidence is incomplete; uncertainty alone is
+            # MEDIUM, but it no longer escalates the issuer to HIGH or triggers a veto.
+            level = RiskLevel.MEDIUM
+        veto = has_trading_suspension or score >= 8.5
         if veto:
             warnings.append("Risk veto: the Manager must not emit BUY from this evidence set.")
         source_ids = [source.source_id for source in state.market_data.source_refs]
@@ -171,6 +187,7 @@ class RiskAgent(BaseAgent):
             ),
             sections=sections,
             confidence=round(max(0.1, 0.8 - 0.08 * len(quality_issues) - (0.15 if fundamental.signal is Signal.UNKNOWN else 0)), 2),
+            policy_version="risk-v3-balanced",
         )
         llm_review = self.llm_review(
             "Adversarially challenge specialist conclusions and identify unmeasured risks",
@@ -208,4 +225,11 @@ class RiskAgent(BaseAgent):
             return max(0.0, float(os.getenv("STOCK_AGENT_MIN_AVG_TRADED_VALUE_VND", "1000000000")))
         except ValueError:
             return 1_000_000_000.0
+
+    @staticmethod
+    def _is_financial_sector(sector: str | None) -> bool:
+        normalized = (sector or "").casefold()
+        return any(token in normalized for token in (
+            "bank", "ngân hàng", "securities", "chứng khoán", "insurance", "bảo hiểm", "financial",
+        ))
 

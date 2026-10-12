@@ -22,7 +22,7 @@ flowchart LR
     D --> A
 ```
 
-Embedding là extension point tùy chọn qua `SemanticKnowledgeRetriever`. Không có embedding thì exact/FTS5 vẫn hoạt động đầy đủ; mặc định không gọi API trả phí và không cần vector database.
+Embedding là extension point tùy chọn qua `SemanticKnowledgeRetriever`. Neo4j Knowledge Graph bổ sung entity traversal 1–2 hop và đưa các `document_id` liên quan vào hybrid ranking. Không có embedding hoặc Neo4j thì exact/FTS5 vẫn hoạt động đầy đủ. Xem [Knowledge Graph với Neo4j](knowledge-graph.md).
 
 ## Storage và schema
 

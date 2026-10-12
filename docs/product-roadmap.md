@@ -155,7 +155,7 @@ Data contracts từ Phase A giúp task khai báo rõ required data. Không cần
 
 ## Phase C — Research/RAG & Evidence
 
-**Trạng thái:** citation-first research foundation đã triển khai: typed document/evidence contracts, provenance-required ingestion, SQLite FTS retrieval và hybrid fallback theo tầng. Local citation luôn được ưu tiên. Local miss hiện có P0 vertical slice fetch/extract HTML có giới hạn và trả quote-level external evidence, tách hoàn toàn khỏi verified local corpus. Chưa có provider API production/failover, multi-iteration research loop, synthesis, PDF/OCR, source allowlist hay automatic ingestion. Xem [phase-c-research-evidence.md](phase-c-research-evidence.md) và [internet research audit](phase-c-internet-research-audit.md).
+**Trạng thái:** local RAG end-to-end đã triển khai: provenance-required ingestion, chunk embedding, cosine similarity, FTS5 hybrid retrieval và citation-constrained LLM synthesis. Local citation luôn được ưu tiên. Local miss có vertical slice fetch/extract HTML giới hạn và trả quote-level external evidence, tách khỏi verified corpus. Chưa có production failover, multi-iteration loop, PDF/OCR, source allowlist đầy đủ hay automatic ingestion. Xem [rag.md](rag.md), [phase-c-research-evidence.md](phase-c-research-evidence.md) và [internet research audit](phase-c-internet-research-audit.md).
 
 ### Vấn đề đang giải quyết
 

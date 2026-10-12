@@ -22,6 +22,7 @@ from stock_multi_agent.models.knowledge import (
     KnowledgeSourceType,
     VerificationStatus,
 )
+from stock_multi_agent.services.knowledge_graph import Neo4jKnowledgeGraph
 
 
 class KnowledgeIngestionError(ValueError):
@@ -135,6 +136,7 @@ class KnowledgeStore:
         self,
         database_path: Path | None = None,
         semantic_retriever: SemanticKnowledgeRetriever | None = None,
+        knowledge_graph: Neo4jKnowledgeGraph | None = None,
     ) -> None:
         configured = os.getenv("STOCK_AGENT_KNOWLEDGE_DATABASE", "").strip()
         self.database_path = database_path or (Path(configured).resolve() if configured else self._runtime_root() / "knowledge" / "knowledge.sqlite3")
@@ -143,6 +145,7 @@ class KnowledgeStore:
                 f"Workspace policy requires knowledge storage on drive D:, got {self.database_path.resolve()}"
             )
         self.semantic_retriever = semantic_retriever
+        self.knowledge_graph = knowledge_graph or Neo4jKnowledgeGraph()
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
@@ -465,6 +468,31 @@ class KnowledgeStore:
         with self._connect() as connection:
             return int(connection.execute("SELECT COUNT(*) FROM knowledge_documents WHERE active = 1").fetchone()[0])
 
+    def graph_records(self) -> list[dict[str, object]]:
+        """Export active KB documents and chunks for the Neo4j projection."""
+        records: list[dict[str, object]] = []
+        with self._connect() as connection:
+            documents = connection.execute(
+                "SELECT * FROM knowledge_documents WHERE active=1 ORDER BY document_id",
+            ).fetchall()
+            for document in documents:
+                chunks = connection.execute(
+                    "SELECT chunk_id,heading,text FROM knowledge_chunks WHERE document_id=? ORDER BY ordinal",
+                    (document["document_id"],),
+                ).fetchall()
+                records.append({
+                    "document_id": str(document["document_id"]),
+                    "title": str(document["title"]),
+                    "publisher": str(document["publisher"]),
+                    "version": str(document["version"]),
+                    "topics": json.loads(str(document["topics_json"])),
+                    "chunks": [dict(chunk) for chunk in chunks],
+                })
+        return records
+
+    def sync_knowledge_graph(self, *, rebuild: bool = False) -> dict[str, int | str | bool]:
+        return self.knowledge_graph.sync(self.graph_records(), rebuild=rebuild)
+
     def search(self, query: str, limit: int = 5, topics: list[str] | None = None) -> KnowledgeSearchResult:
         cleaned = re.sub(r"\s+", " ", query).strip()
         if not cleaned:
@@ -476,8 +504,9 @@ class KnowledgeStore:
         if not terms:
             return KnowledgeSearchResult(query=query, retrieval_note="No searchable knowledge terms were found.")
 
+        graph_context = self.knowledge_graph.expand(cleaned, max_hops=2, limit=max(20, limit * 5))
         candidates: dict[str, dict[str, object]] = {}
-        mode_ranks: dict[str, dict[str, int]] = {"exact": {}, "bm25": {}, "semantic": {}}
+        mode_ranks: dict[str, dict[str, int]] = {"exact": {}, "bm25": {}, "semantic": {}, "graph": {}}
         with self._connect() as connection:
             fts_query = " OR ".join(f'"{term}"' for term in terms[:20] if re.fullmatch(r"[a-z0-9]+", term))
             if fts_query:
@@ -529,6 +558,26 @@ class KnowledgeStore:
                         candidates[chunk_id]["semantic_score"] = max(0.0, min(1.0, float(semantic_score)))
                         mode_ranks["semantic"][chunk_id] = rank
 
+            graph_rank = 0
+            graph_terms = [*terms, *(self.normalize_for_search(term) for term in graph_context.expansion_terms)]
+            for document_id in graph_context.related_document_ids:
+                rows = connection.execute(
+                    """SELECT c.*, d.* FROM knowledge_chunks c JOIN knowledge_documents d
+                       ON d.document_id=c.document_id WHERE c.document_id=? AND d.active=1""",
+                    (document_id,),
+                ).fetchall()
+                ranked_rows = sorted(
+                    rows,
+                    key=lambda row: -sum(
+                        bool(re.search(rf"\b{re.escape(term)}\b", str(row["normalized_text"])))
+                        for term in graph_terms if term
+                    ),
+                )[:3]
+                for row in ranked_rows:
+                    graph_rank += 1
+                    candidates.setdefault(row["chunk_id"], dict(row))
+                    mode_ranks["graph"][row["chunk_id"]] = graph_rank
+
         ranked_citations: list[KnowledgeCitation] = []
         for chunk_id, row in candidates.items():
             row_topics = set(json.loads(str(row["topics_json"])))
@@ -537,7 +586,9 @@ class KnowledgeStore:
                 bool(re.search(rf"\b{re.escape(term)}\b", normalized_text)) for term in terms
             )
             coverage = matched_terms / len(terms)
-            has_strong_signal = chunk_id in mode_ranks["exact"] or chunk_id in mode_ranks["semantic"]
+            has_strong_signal = any(
+                chunk_id in mode_ranks[mode] for mode in ("exact", "semantic", "graph")
+            )
             if coverage < 0.34 and not has_strong_signal:
                 continue
             score = sum(1.0 / (60 + ranks[chunk_id]) for ranks in mode_ranks.values() if chunk_id in ranks) * 100
@@ -553,13 +604,20 @@ class KnowledgeStore:
         ranked_citations.sort(key=lambda item: (-item.score, item.document_id, item.chunk_id))
         selected = ranked_citations[: max(1, min(limit, 10))]
         semantic_used = bool(mode_ranks["semantic"])
+        graph_used = bool(mode_ranks["graph"])
         note = "Verified local KB evidence matched the query." if selected else "No verified local KB evidence matched this query."
+        retrieval_mode = "exact+bm25"
+        if semantic_used:
+            retrieval_mode += "+semantic"
+        if graph_used:
+            retrieval_mode += "+neo4j"
         return KnowledgeSearchResult(
             query=query,
             citations=selected,
-            retrieval_note=note,
-            retrieval_mode="exact+bm25+semantic-rrf" if semantic_used else "exact+bm25-rrf",
+            retrieval_note=f"{note} {graph_context.retrieval_note}".strip(),
+            retrieval_mode=f"{retrieval_mode}-rrf",
             requires_freshness_check=any(item.freshness_warning for item in selected),
+            graph_context=graph_context,
         )
 
     @classmethod

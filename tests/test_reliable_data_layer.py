@@ -8,7 +8,7 @@ import pytest
 
 from conftest import conflict_market_data
 from stock_multi_agent.agents.fundamental_agent import FundamentalAgent
-from stock_multi_agent.models.analysis import Signal
+from stock_multi_agent.models.analysis import FinancialMetrics, Signal
 from stock_multi_agent.models.data import FinancialMetricObservation, PriceAdjustment, QualityStatus
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.providers.data_store import RawSnapshotStore, SQLiteMarketDataCache
@@ -37,7 +37,7 @@ def test_quality_checker_records_unknown_adjustment_without_inventing_policy() -
     assert any(issue.code == "UNKNOWN_PRICE_ADJUSTMENT" for issue in report.issues)
 
 
-def test_stale_financial_period_blocks_fundamental_scoring() -> None:
+def test_stale_financial_period_is_used_with_reduced_weight() -> None:
     data = conflict_market_data().model_copy(update={
         "financial_observations": [FinancialMetricObservation(
             metric="pe",
@@ -53,8 +53,34 @@ def test_stale_financial_period_blocks_fundamental_scoring() -> None:
     data = data.model_copy(update={"quality_report": report})
     state = AgentState(ticker="FPT", investment_horizon="3 months", user_goal="Analyze FPT", market_data=data)
     result = FundamentalAgent(FinancialToolkit()).run(state)["fundamental_result"]
-    assert result.signal is Signal.UNKNOWN
-    assert result.confidence == pytest.approx(0.1)
+    assert result.signal is not Signal.UNKNOWN
+    assert result.confidence < 0.5
+    assert result.policy_version == "fundamental-v3-quality-weighted"
+    assert result.feature_contributions["data_quality_penalty"] < 0
+    assert all(item.confidence == pytest.approx(0.5) for item in result.evidence)
+    assert any("STALE_FINANCIALS" in weakness for weakness in result.weaknesses)
+
+
+def test_sparse_unperioded_metrics_are_scored_with_low_confidence() -> None:
+    data = conflict_market_data().model_copy(update={
+        "financials": FinancialMetrics(pe=14.0, roe=0.18),
+        "financial_observations": [],
+        "financial_statement_observations": [],
+    })
+    report = DataQualityChecker().evaluate(data, require_financials=True, today=data.as_of)
+    assert {issue.code for issue in report.issues}.issuperset({
+        "INSUFFICIENT_FINANCIALS", "MISSING_FINANCIAL_PERIOD",
+    })
+
+    result = FundamentalAgent(FinancialToolkit()).run(AgentState(
+        ticker="FPT", investment_horizon="3 months", user_goal="Analyze FPT",
+        market_data=data.model_copy(update={"quality_report": report}),
+    ))["fundamental_result"]
+
+    assert result.signal is not Signal.UNKNOWN
+    assert result.confidence < 0.3
+    assert 5.0 < result.score < 6.0
+    assert {item.label for item in result.evidence} == {"P/E", "ROE"}
 
 
 def test_sqlite_cache_round_trip_and_expiry() -> None:

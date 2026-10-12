@@ -1,29 +1,9 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
+from stock_multi_agent.config import load_workspace_env
 
 
-def _load_workspace_env() -> None:
-    """Load simple KEY=VALUE settings without overriding process secrets."""
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.is_file():
-        return
-    for raw_line in env_path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key or not key.replace("_", "").isalnum():
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        os.environ.setdefault(key, value)
-
-
-_load_workspace_env()
+load_workspace_env()
 
 import streamlit as st
 
@@ -53,7 +33,7 @@ SUGGESTIONS = [
 # Increment when provider construction defaults change. Streamlit preserves
 # session_state across source reloads, so this prevents an old provider object
 # from retaining a bursty rate-limit policy after an application upgrade.
-SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v1-llm-technical-detailed-v7"
+SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v2-neo4j-rag-v1-llm-technical-v8"
 
 
 def initialize_session() -> tuple[ChatService, InMemoryConversationStore]:

@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-Foundation đã triển khai theo hướng citation-first. Research chạy **hybrid theo tầng**: SQLite FTS5 tìm trong corpus cục bộ trước; local miss chạy một research vertical slice có giới hạn: plan → source discovery → fetch HTML an toàn → extract → evidence selection. Chưa thêm vector database/LLM summarizer vì chưa có benchmark chứng minh lợi ích.
+Foundation đã triển khai theo hướng citation-first. Local research hiện chạy RAG hoàn chỉnh: question embedding → cosine vector similarity → hybrid merge với SQLite FTS5 → top-k chunk → structured LLM synthesis có citation validation. Local miss vẫn chạy research vertical slice có giới hạn: plan → source discovery → fetch HTML an toàn → extract → evidence selection. Vector được lưu ngay trong SQLite nên chưa cần một vector database riêng.
 
 ## Contracts và storage
 
@@ -16,7 +16,7 @@ Mỗi document bắt buộc có:
 - SHA-256 content checksum, ticker/language;
 - chunks có offset và citation gắn tới chính xác document/chunk.
 
-`ResearchStore` lưu metadata/chunk trong `.runtime/research/research.sqlite3` trên ổ D và dùng SQLite FTS5 lexical retrieval. Đây là lựa chọn cố ý: dữ liệu ban đầu nhỏ, inspect/debug dễ, không cần embedding model hoặc vector database để trả citation đúng.
+`ResearchStore` lưu metadata, chunk và normalized float32 embedding trong `.runtime/research/research.sqlite3` trên ổ D. Retrieval kết hợp cosine similarity với SQLite FTS5; mỗi vector gắn `chunk_id` và `model_id` để có thể re-index khi đổi embedding model.
 
 ## Ingestion và retrieval
 
@@ -108,5 +108,5 @@ Hai trang HTML trên website Báo cáo thường niên 2022 chính thức của 
 
 - Production-grade credentialed search provider/failover, source allowlist, robust main-content extraction, source-quality score, retention cache và freshness SLA chưa có.
 - Chưa có PDF parsing, OCR, table extraction hoặc document version/revision workflow đầy đủ.
-- Local retrieval là lexical FTS; web fallback không phải vector retrieval. Chỉ đánh giá embedding/reranker sau khi có corpus thật và metric recall/citation faithfulness.
-- Chưa có multi-iteration recovery, cross-source contradiction handling hoặc LLM claim synthesis. Khi bổ sung, mọi claim phải link citation và numerical facts vẫn phải lấy từ structured data.
+- Embedding mặc định `local_hash` là baseline offline, không có hiểu biết ngữ nghĩa sâu như model neural; có thể chuyển sang Ollama `nomic-embed-text` và re-index.
+- Đã có LLM claim synthesis với source-ID validation, nhưng chưa có multi-iteration recovery, cross-source contradiction engine hoặc benchmark faithfulness đủ lớn.

@@ -96,6 +96,20 @@ def test_bank_template_does_not_treat_debt_to_equity_as_generic_leverage() -> No
     assert "Debt/equity" not in result.feature_contributions
 
 
+def test_risk_does_not_apply_generic_debt_to_equity_penalty_to_bank() -> None:
+    data = conflict_market_data("TCB").model_copy(update={
+        "instrument": Instrument(ticker="TCB", sector="Banking"),
+        "financials": conflict_market_data("TCB").financials.model_copy(update={"debt_to_equity": 8.0}),
+    })
+    state = AgentState(ticker="TCB", investment_horizon="3 months", user_goal="Analyse TCB", market_data=data)
+    state.technical_result = TechnicalAgent(TechnicalIndicatorToolkit()).run(state)["technical_result"]
+    state.fundamental_result = FundamentalAgent(FinancialToolkit()).run(state)["fundamental_result"]
+
+    result = RiskAgent(TechnicalIndicatorToolkit()).run(state)["risk_result"]
+
+    assert not any("Leverage" in criticism for criticism in result.criticisms)
+
+
 @pytest.mark.parametrize(
     ("sector", "template", "expected_score"),
     [

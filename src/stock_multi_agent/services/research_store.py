@@ -9,7 +9,10 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
 from stock_multi_agent.models.research import Citation, DocumentChunk, EvidenceBundle, ResearchDocument, ResearchDocumentType
+from stock_multi_agent.services.embeddings import EmbeddingProvider, configured_embedding_provider
 
 
 class ResearchIngestionError(ValueError):
@@ -23,8 +26,15 @@ class ResearchStore:
     explicit responsibilities, so a citation can never be fabricated from a URL.
     """
 
-    def __init__(self, database_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        database_path: Path | None = None,
+        embedding_provider: EmbeddingProvider | None = None,
+    ) -> None:
         self.database_path = database_path or self._runtime_root() / "research" / "research.sqlite3"
+        rag_enabled = os.getenv("STOCK_AGENT_RAG_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+        self.embedding_provider = embedding_provider or (configured_embedding_provider() if rag_enabled else None)
+        self.last_embedding_error: str | None = None
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
@@ -67,6 +77,14 @@ class ResearchStore:
                     char_end INTEGER NOT NULL
                 );
                 CREATE VIRTUAL TABLE IF NOT EXISTS research_chunks_fts USING fts5(chunk_id UNINDEXED, text);
+                CREATE TABLE IF NOT EXISTS research_chunk_embeddings (
+                    chunk_id TEXT NOT NULL REFERENCES research_chunks(chunk_id),
+                    model_id TEXT NOT NULL,
+                    dimensions INTEGER NOT NULL,
+                    vector BLOB NOT NULL,
+                    embedded_at TEXT NOT NULL,
+                    PRIMARY KEY (chunk_id, model_id)
+                );
                 """
             )
 
@@ -157,9 +175,49 @@ class ResearchStore:
                 "INSERT INTO research_chunks_fts (chunk_id, text) VALUES (?, ?)",
                 [(chunk.chunk_id, chunk.text) for chunk in chunks],
             )
+        self._embed_chunks(chunks)
         return document
 
     def search(self, query: str, ticker: str | None = None, limit: int = 5) -> EvidenceBundle:
+        """Hybrid local retrieval using vector similarity plus SQLite FTS5."""
+        lexical = self._search_lexical(query, ticker=ticker, limit=max(limit * 2, 6))
+        vector = self.search_vector(query, ticker=ticker, limit=max(limit * 2, 6))
+        combined: dict[str, Citation] = {}
+        scores: dict[str, float] = {}
+        for rank, citation in enumerate(vector.citations, 1):
+            combined[citation.chunk_id] = citation
+            scores[citation.chunk_id] = 0.7 * citation.retrieval_score + 0.3 / (60 + rank)
+        for rank, citation in enumerate(lexical.citations, 1):
+            if citation.chunk_id in combined:
+                previous = combined[citation.chunk_id]
+                modes = list(dict.fromkeys([*previous.retrieval_modes, "fts5"]))
+                combined[citation.chunk_id] = previous.model_copy(update={"retrieval_modes": modes})
+                scores[citation.chunk_id] += 0.3 / (60 + rank)
+            else:
+                combined[citation.chunk_id] = citation
+                scores[citation.chunk_id] = 0.3 / (60 + rank)
+
+        ranked = sorted(combined.values(), key=lambda item: scores[item.chunk_id], reverse=True)
+        selected: list[Citation] = []
+        seen_documents: set[str] = set()
+        for citation in ranked:
+            if citation.document_id in seen_documents:
+                continue
+            score = max(0.0, min(1.0, scores[citation.chunk_id]))
+            selected.append(citation.model_copy(update={"retrieval_score": score}))
+            seen_documents.add(citation.document_id)
+            if len(selected) >= limit:
+                break
+        modes = sorted({mode for item in selected for mode in item.retrieval_modes})
+        note = (
+            f"Verified local documents matched with hybrid retrieval ({'+'.join(modes)})."
+            if selected else "No verified local document matched this query."
+        )
+        if self.last_embedding_error:
+            note += f" Vector retrieval warning: {self.last_embedding_error}"
+        return EvidenceBundle(query=query, citations=selected, retrieval_note=note)
+
+    def _search_lexical(self, query: str, ticker: str | None = None, limit: int = 5) -> EvidenceBundle:
         cleaned = re.sub(r"\s+", " ", query).strip()
         if not cleaned:
             raise ResearchIngestionError("Research query cannot be empty.")
@@ -181,7 +239,7 @@ class ResearchStore:
             rows = connection.execute(sql, (terms, max(1, min(limit * 4, 30)))).fetchall()
         citations: list[Citation] = []
         seen_documents: set[str] = set()
-        for row in rows:
+        for rank, row in enumerate(rows, 1):
             if ticker_filter and ticker_filter not in json.loads(row["tickers_json"]):
                 continue
             if row["document_id"] in seen_documents:
@@ -191,13 +249,137 @@ class ResearchStore:
                 source_url=row["source_url"], publisher=row["publisher"],
                 published_at=datetime.fromisoformat(row["published_at"]),
                 retrieved_at=datetime.fromisoformat(row["retrieved_at"]), content_sha256=row["content_sha256"],
-                quote=row["text"][:1400],
+                quote=row["text"][:1400], retrieval_score=1.0 / rank, retrieval_modes=["fts5"],
             ))
             seen_documents.add(row["document_id"])
             if len(citations) >= limit:
                 break
         note = "Verified local documents matched the query." if citations else "No verified local document matched this query."
         return EvidenceBundle(query=query, citations=citations, retrieval_note=note)
+
+    def search_vector(self, query: str, ticker: str | None = None, limit: int = 5) -> EvidenceBundle:
+        if self.embedding_provider is None:
+            return EvidenceBundle(query=query, citations=[], retrieval_note="Vector retrieval is disabled.")
+        cleaned = re.sub(r"\s+", " ", query).strip()
+        if not cleaned:
+            raise ResearchIngestionError("Research query cannot be empty.")
+        try:
+            self._ensure_embeddings()
+            query_vector = self.embedding_provider.embed([cleaned])[0]
+            model_id = self.embedding_provider.model_id
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT c.chunk_id, c.document_id, c.text, d.title, d.source_url, d.publisher,
+                              d.published_at, d.retrieved_at, d.content_sha256, d.tickers_json,
+                              e.dimensions, e.vector
+                       FROM research_chunk_embeddings e
+                       JOIN research_chunks c ON c.chunk_id=e.chunk_id
+                       JOIN research_documents d ON d.document_id=c.document_id
+                       WHERE e.model_id=?""",
+                    (model_id,),
+                ).fetchall()
+        except Exception as exc:
+            self.last_embedding_error = f"{type(exc).__name__}: {exc}"
+            return EvidenceBundle(query=query, citations=[], retrieval_note="Vector retrieval failed; FTS fallback remains available.")
+
+        ticker_filter = ticker.upper() if ticker else None
+        scored: list[tuple[float, sqlite3.Row]] = []
+        for row in rows:
+            if ticker_filter and ticker_filter not in json.loads(row["tickers_json"]):
+                continue
+            vector = np.frombuffer(row["vector"], dtype="<f4")
+            if len(vector) != int(row["dimensions"]) or len(vector) != len(query_vector):
+                continue
+            similarity = float(np.dot(query_vector, vector))
+            scored.append((max(0.0, min(1.0, similarity)), row))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        minimum = self._env_float("STOCK_AGENT_RAG_MIN_SIMILARITY", 0.05, 0.0, 1.0)
+        citations: list[Citation] = []
+        seen_documents: set[str] = set()
+        for similarity, row in scored:
+            if similarity < minimum or row["document_id"] in seen_documents:
+                continue
+            citations.append(Citation(
+                document_id=row["document_id"], chunk_id=row["chunk_id"], title=row["title"],
+                source_url=row["source_url"], publisher=row["publisher"],
+                published_at=datetime.fromisoformat(row["published_at"]),
+                retrieved_at=datetime.fromisoformat(row["retrieved_at"]), content_sha256=row["content_sha256"],
+                quote=row["text"][:1400], retrieval_score=similarity, retrieval_modes=["vector"],
+            ))
+            seen_documents.add(row["document_id"])
+            if len(citations) >= limit:
+                break
+        self.last_embedding_error = None
+        note = "Verified local documents matched by vector similarity." if citations else "No vector match passed the similarity threshold."
+        return EvidenceBundle(query=query, citations=citations, retrieval_note=note)
+
+    def _ensure_embeddings(self) -> None:
+        if self.embedding_provider is None:
+            return
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT c.chunk_id, c.document_id, c.ordinal, c.text, c.char_start, c.char_end
+                   FROM research_chunks c
+                   LEFT JOIN research_chunk_embeddings e
+                     ON e.chunk_id=c.chunk_id AND e.model_id=?
+                   WHERE e.chunk_id IS NULL ORDER BY c.document_id, c.ordinal""",
+                (self.embedding_provider.model_id,),
+            ).fetchall()
+        chunks = [DocumentChunk(**dict(row)) for row in rows]
+        self._embed_chunks(chunks)
+
+    def reindex_embeddings(self, *, force: bool = False) -> int:
+        if self.embedding_provider is None:
+            return 0
+        if force:
+            with self._connect() as connection:
+                connection.execute(
+                    "DELETE FROM research_chunk_embeddings WHERE model_id=?",
+                    (self.embedding_provider.model_id,),
+                )
+        self._ensure_embeddings()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM research_chunk_embeddings WHERE model_id=?",
+                (self.embedding_provider.model_id,),
+            ).fetchone()
+        return int(row["count"]) if row else 0
+
+    def _embed_chunks(self, chunks: list[DocumentChunk]) -> None:
+        if self.embedding_provider is None or not chunks:
+            return
+        try:
+            vectors = self.embedding_provider.embed([chunk.text for chunk in chunks])
+            if len(vectors) != len(chunks):
+                raise RuntimeError("Embedding provider returned the wrong number of vectors")
+            now = datetime.now(timezone.utc).isoformat()
+            rows = []
+            for chunk, vector in zip(chunks, vectors):
+                normalized = np.asarray(vector, dtype="<f4")
+                norm = float(np.linalg.norm(normalized))
+                if not norm:
+                    continue
+                normalized /= norm
+                rows.append((
+                    chunk.chunk_id, self.embedding_provider.model_id, len(normalized), normalized.tobytes(), now,
+                ))
+            with self._connect() as connection:
+                connection.executemany(
+                    """INSERT OR REPLACE INTO research_chunk_embeddings
+                       (chunk_id,model_id,dimensions,vector,embedded_at) VALUES (?,?,?,?,?)""",
+                    rows,
+                )
+            self.last_embedding_error = None
+        except Exception as exc:
+            self.last_embedding_error = f"{type(exc).__name__}: {exc}"
+
+    @staticmethod
+    def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+        try:
+            value = float(os.getenv(name, str(default)))
+        except ValueError:
+            value = default
+        return max(minimum, min(maximum, value))
 
     @staticmethod
     def _search_terms(query: str) -> list[str]:
