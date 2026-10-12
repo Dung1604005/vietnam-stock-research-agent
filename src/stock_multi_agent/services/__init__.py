@@ -5,6 +5,7 @@ from stock_multi_agent.services.knowledge_store import KnowledgeStore
 from stock_multi_agent.services.knowledge_graph import Neo4jKnowledgeGraph
 from stock_multi_agent.services.llm_analyst import LLMAnalystService
 from stock_multi_agent.services.agent_llm import AgentLLMAdvisor
+from stock_multi_agent.services.agent_evaluation import AgentEvaluationService
 
 __all__ = [
     "AnalysisService",
@@ -14,4 +15,5 @@ __all__ = [
     "Neo4jKnowledgeGraph",
     "LLMAnalystService",
     "AgentLLMAdvisor",
+    "AgentEvaluationService",
 ]

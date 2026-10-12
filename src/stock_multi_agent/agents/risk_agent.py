@@ -3,6 +3,7 @@ from __future__ import annotations
 from stock_multi_agent.agents.base_agent import BaseAgent
 import os
 
+from stock_multi_agent.models.agent_contracts import AgentSpec, RiskAgentContext
 from stock_multi_agent.models.analysis import EvidenceItem, RiskAnalysis, RiskLevel, RiskSection, Signal
 from stock_multi_agent.models.data import DataKind
 from stock_multi_agent.models.messages import AgentName, MessageType
@@ -13,14 +14,26 @@ from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolk
 class RiskAgent(BaseAgent):
     name = AgentName.RISK
     goal = "Challenge optimistic conclusions and prevent unjustified confidence."
+    spec = AgentSpec(
+        role=name,
+        goal=goal,
+        required_context=["market_data", "technical_result", "fundamental_result", "portfolio_positions", "research_evidence"],
+        allowed_tools=["annualized_volatility", "max_drawdown", "average_traded_value"],
+        output_type="RiskAnalysis",
+        can_use_llm=False,
+        decision_constraints=[
+            "Separate issuer/portfolio risk from missing-data uncertainty",
+            "Only verified severe events or a high measured score may trigger veto",
+            "Research prose cannot alter the deterministic risk score or veto",
+        ],
+    )
 
     def __init__(self, toolkit: TechnicalIndicatorToolkit, llm_advisor=None) -> None:
         self.tools = toolkit
         self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState) -> dict[str, object]:
-        if state.market_data is None or state.technical_result is None or state.fundamental_result is None:
-            raise ValueError("Risk Agent requires data and both specialist results")
+        context = RiskAgentContext.from_state(state)
         closes = [bar.close for bar in state.market_data.bars]
         volumes = [bar.volume for bar in state.market_data.bars]
         volatility = self.tools.annualized_volatility(closes[-60:])
@@ -29,6 +42,7 @@ class RiskAgent(BaseAgent):
         technical = state.technical_result
         fundamental = state.fundamental_result
         score = 1.0
+        uncertainty_score = 0.5
         criticisms: list[str] = []
         warnings = list(state.market_data.warnings)
 
@@ -51,15 +65,13 @@ class RiskAgent(BaseAgent):
 
         has_unknown_signal = Signal.UNKNOWN in (technical.signal, fundamental.signal)
         if not has_unknown_signal and technical.signal != fundamental.signal:
-            score += 1.0
+            uncertainty_score += 1.25
             criticisms.append(f"Agents disagree: Technical={technical.signal.value}, Fundamental={fundamental.signal.value}.")
         if has_unknown_signal:
-            # Missing evidence is uncertainty, not proof that the issuer itself is risky.
-            # Keep a small prudence premium and express the larger effect through confidence.
-            score += 0.75
+            uncertainty_score += 2.0
             warnings.append("At least one specialist has insufficient evidence (UNKNOWN).")
         elif min(technical.confidence, fundamental.confidence) < 0.5:
-            score += 0.5
+            uncertainty_score += 1.0
             warnings.append("At least one specialist confidence is below 0.50.")
         min_traded_value = self._minimum_traded_value()
         if average_traded_value < min_traded_value:
@@ -70,6 +82,7 @@ class RiskAgent(BaseAgent):
             # Quality issues lower confidence below; counting every issue in the risk
             # score duplicated stale/missing-data penalties and made HIGH nearly automatic.
             warnings.append(f"Data-quality warnings affect confidence ({len(quality_issues)} issue(s)).")
+            uncertainty_score += min(3.0, 0.75 * len(quality_issues))
         debt_to_equity = state.market_data.financials.debt_to_equity
         sector = state.market_data.instrument.sector if state.market_data.instrument else None
         financial_sector = self._is_financial_sector(sector)
@@ -91,6 +104,7 @@ class RiskAgent(BaseAgent):
         if has_trading_suspension:
             score += 2.0
             criticisms.append("An issuer event reports a trading suspension; verify the official disclosure before acting.")
+        issuer_score = min(10.0, score)
         position_total = sum(position.weight for position in state.portfolio_positions)
         normalized_weights = [position.weight / position_total for position in state.portfolio_positions] if position_total else []
         concentration = sum(weight ** 2 for weight in normalized_weights)
@@ -102,11 +116,10 @@ class RiskAgent(BaseAgent):
             score += 0.5
         score = min(10.0, score)
         level = RiskLevel.HIGH if score >= 7.5 else RiskLevel.MEDIUM if score >= 3.5 else RiskLevel.LOW
-        if has_unknown_signal and level is RiskLevel.LOW:
-            # Do not claim LOW risk when evidence is incomplete; uncertainty alone is
-            # MEDIUM, but it no longer escalates the issuer to HIGH or triggers a veto.
-            level = RiskLevel.MEDIUM
-        veto = has_trading_suspension or score >= 8.5
+        issuer_level = RiskLevel.HIGH if issuer_score >= 7.5 else RiskLevel.MEDIUM if issuer_score >= 3.5 else RiskLevel.LOW
+        uncertainty_score = min(10.0, uncertainty_score)
+        uncertainty_level = RiskLevel.HIGH if uncertainty_score >= 7.0 else RiskLevel.MEDIUM if uncertainty_score >= 2.5 else RiskLevel.LOW
+        veto = has_trading_suspension or issuer_score >= 8.5
         if veto:
             warnings.append("Risk veto: the Manager must not emit BUY from this evidence set.")
         source_ids = [source.source_id for source in state.market_data.source_refs]
@@ -130,7 +143,10 @@ class RiskAgent(BaseAgent):
             ),
             RiskSection(
                 name="data", status="ASSESSED",
-                observations=[issue.message for issue in quality_issues] or ["No data-quality issue reported"],
+                observations=[
+                    f"Data uncertainty {uncertainty_level.value} ({uncertainty_score:.1f}/10)",
+                    *([issue.message for issue in quality_issues] or ["No data-quality issue reported"]),
+                ],
                 evidence=[EvidenceItem(
                     label="Data-quality status", value=state.market_data.quality_report.status.value,
                     input_fields=["quality_report"], source_ids=source_ids, as_of=as_of,
@@ -174,6 +190,22 @@ class RiskAgent(BaseAgent):
                     input_fields=["portfolio_positions.weight"], source_ids=[], as_of=as_of,
                 )] if normalized_weights else [],
             ),
+            RiskSection(
+                name="research_context", status="ASSESSED" if state.research_evidence else "UNKNOWN",
+                observations=(
+                    [f"{item.publisher}: {item.title}" for item in state.research_evidence[:3]]
+                    if state.research_evidence else ["No verified local research citation matched this ticker."]
+                ),
+                evidence=[EvidenceItem(
+                    label=f"Research context: {item.title}"[:160],
+                    value=item.quote if len(item.quote) <= 500 else item.quote[:497] + "...",
+                    input_fields=["research_evidence"],
+                    source_ids=[item.document_id, item.chunk_id],
+                    as_of=item.published_at.date(),
+                    confidence=min(0.75, item.retrieval_score),
+                    note="Contextual evidence; it does not directly set the risk score.",
+                ) for item in state.research_evidence[:3]],
+            ),
         ]
         result = RiskAnalysis(
             risk_level=level,
@@ -182,12 +214,17 @@ class RiskAgent(BaseAgent):
             warnings=warnings,
             veto=veto,
             reasoning_summary=(
-                f"Market volatility, drawdown, liquidity, data quality and specialist agreement produce {level.value} risk ({score:.1f}/10). "
-                "Event/news and portfolio risk are marked UNKNOWN only when their verified inputs are unavailable."
+                f"Measured issuer and portfolio factors produce {level.value} risk ({score:.1f}/10); "
+                f"issuer-only risk is {issuer_level.value} ({issuer_score:.1f}/10), while data uncertainty is "
+                f"{uncertainty_level.value} ({uncertainty_score:.1f}/10)."
             ),
             sections=sections,
             confidence=round(max(0.1, 0.8 - 0.08 * len(quality_issues) - (0.15 if fundamental.signal is Signal.UNKNOWN else 0)), 2),
-            policy_version="risk-v3-balanced",
+            policy_version="risk-v4-decomposed",
+            issuer_risk_level=issuer_level,
+            issuer_risk_score=round(issuer_score, 2),
+            data_uncertainty_level=uncertainty_level,
+            data_uncertainty_score=round(uncertainty_score, 2),
         )
         llm_review = self.llm_review(
             "Adversarially challenge specialist conclusions and identify unmeasured risks",
@@ -217,6 +254,17 @@ class RiskAgent(BaseAgent):
                 *([self.event("REASON", "LLM_RISK_REVIEW", f"Structured LLM review={llm_review.status}", "local_llm")] if llm_review is not None else []),
             ],
             "completed_tasks": ["risk_reanalysis" if state.iteration else "risk_analysis"],
+            "agent_reports": [self.report(
+                stage="risk_reanalysis" if state.iteration else "risk_analysis",
+                status="PARTIAL" if uncertainty_level is RiskLevel.HIGH else "COMPLETED",
+                summary=result.reasoning_summary,
+                confidence=result.confidence,
+                output_key="risk_result",
+                tools_used=["annualized_volatility", "max_drawdown", "average_traded_value"],
+                assumptions=["Data uncertainty is reported separately from measured risk"],
+                missing_information=[section.name for section in sections if section.status == "UNKNOWN"],
+                evidence_count=sum(len(section.evidence) for section in sections),
+            )],
         }
 
     @staticmethod

@@ -12,11 +12,11 @@ flowchart LR
     Q --> S[AnalysisService]
     S --> G[LangGraph supervisor graph]
     S --> X[Selective agent routes]
-    G --> A[Five agents]
+    G --> A[Six bounded agents]
     X --> A
     A --> T[Pure tools]
     T --> P[vnstock real-data provider]
-    A -. optional .-> L[Mock / OpenAI / Ollama LLM provider]
+    A -. Technical tool planning only .-> L[Mock / OpenAI / Ollama LLM provider]
     G <--> ST[(AgentState)]
     C --> R[ResponseComposer]
     R --> CH[ChartService / Plotly]
@@ -27,7 +27,7 @@ flowchart LR
 
 | Intent | Route |
 |---|---|
-| Stock analysis | Data → Technical + Fundamental → Risk → Manager |
+| Stock analysis | Data → Forecast → Research → Technical + Fundamental → Risk → Manager |
 | Technical / RSI / MACD | Data → Technical |
 | Fundamental | Data → Fundamental |
 | Risk | Data → Technical + Fundamental → Risk |
@@ -40,11 +40,11 @@ flowchart LR
 
 ## Agent architecture
 
-Every agent has a fixed role and goal, observes only relevant state, selects tools/policy, produces a public reasoning summary (never hidden chain-of-thought), and acts by returning state updates plus `AgentMessage`/trace records. Tools contain calculations but no BUY/HOLD policy. Providers contain integration details but no analysis policy.
+Every agent has a typed `AgentSpec` (role, goal, required context, tool allowlist, output and constraints), observes a validated context model, and emits an `AgentExecutionReport`. Tools contain calculations but no BUY/HOLD policy. Only Technical may use the LLM, and only to select at most two allowlisted diagnostics; Python owns all numbers, scores and decisions.
 
 ## Multi-agent interaction
 
-Technical and Fundamental run as independent parallel branches after normalized data is available. Their updates merge at a LangGraph join. Risk consumes both results and is explicitly adversarial. Manager owns plan/routing and can ask Technical to revisit a longer horizon. The loop is guarded by `max_iterations`.
+Research retrieves provenance-linked local evidence after normalized data and forecast are available. Technical and Fundamental then run as independent parallel branches. Their updates merge at a LangGraph join. Risk consumes both results and separates measured issuer/portfolio risk from data uncertainty. Manager owns bounded routing and can ask Technical to revisit a longer horizon. The loop is guarded by `max_iterations`.
 
 ## Observe → Reason → Plan → Act mapping
 
@@ -70,7 +70,7 @@ Technical and Fundamental run as independent parallel branches after normalized 
 | Memory/state | `AgentState` |
 | Communication | `AgentMessage` |
 | Planning | Manager plan and LangGraph conditional routing |
-| Specialization | Five agent classes with non-overlapping authority |
+| Specialization | Six agent classes with explicit contracts and non-overlapping authority |
 | Conflict/criticism | Signal comparison and Risk veto |
 | Multi-agent system | Fan-out/join/cycle in `StockAgentGraph` |
 

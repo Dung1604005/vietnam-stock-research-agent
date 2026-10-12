@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from stock_multi_agent.agents.base_agent import BaseAgent
+from stock_multi_agent.models.agent_contracts import AgentSpec, ManagerContext
 from stock_multi_agent.models.analysis import Recommendation, RiskLevel, Signal, FinalDecision
 from stock_multi_agent.models.messages import AgentMessage, AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
@@ -9,11 +10,31 @@ from stock_multi_agent.models.state import AgentState
 class ManagerAgent(BaseAgent):
     name = AgentName.MANAGER
     goal = "Plan and coordinate specialists, resolve conflict, and produce a cautious educational recommendation."
+    spec = AgentSpec(
+        role=name,
+        goal=goal,
+        required_context=[
+            "user_goal", "technical_result", "fundamental_result", "risk_result", "research_evidence",
+        ],
+        allowed_tools=[],
+        output_type="FinalDecision",
+        can_use_llm=False,
+        decision_constraints=[
+            "Do not recompute specialist metrics",
+            "Do not emit BUY when a risk veto or HIGH data uncertainty is present",
+            "Require sufficient evidence coverage before BUY",
+            "Use deterministic synthesis so the same inputs produce the same decision",
+        ],
+    )
 
     def __init__(self, llm_advisor=None) -> None:
-        self.llm_advisor = llm_advisor
+        # Retain the argument for backwards compatibility. The Manager is kept
+        # deterministic; LLM reasoning belongs to bounded specialist tasks.
+        del llm_advisor
+        self.llm_advisor = None
 
     def plan(self, state: AgentState) -> dict[str, object]:
+        context = ManagerContext.from_state(state)
         plan = [
             "Acquire and validate real market/company data",
             "Run independent technical and fundamental assessments",
@@ -30,6 +51,13 @@ class ManagerAgent(BaseAgent):
                 self.event("PLAN", "CREATE_PLAN", " → ".join(plan)),
                 self.event("ACT", "SEND_TASK", "Delegate real-data acquisition to Data Agent"),
             ],
+            "agent_reports": [self.report(
+                stage="planning",
+                status="COMPLETED",
+                summary=f"Created a bounded specialist plan for {context.ticker}.",
+                confidence=1.0,
+                output_key="current_plan",
+            )],
         }
 
     def dispatch_specialists(self, state: AgentState) -> dict[str, object]:
@@ -54,12 +82,21 @@ class ManagerAgent(BaseAgent):
         if state.technical_result is None or state.fundamental_result is None or state.risk_result is None:
             return ["Required specialist result is missing"]
         conflicts: list[str] = []
-        if state.technical_result.signal != state.fundamental_result.signal:
+        if (
+            state.technical_result.signal != state.fundamental_result.signal
+            and Signal.UNKNOWN not in (state.technical_result.signal, state.fundamental_result.signal)
+        ):
             conflicts.append(
                 f"Technical {state.technical_result.signal.value} vs Fundamental {state.fundamental_result.signal.value}"
             )
+        if state.technical_result.signal is Signal.UNKNOWN:
+            conflicts.append("Technical evidence is insufficient")
+        if state.fundamental_result.signal is Signal.UNKNOWN:
+            conflicts.append("Fundamental evidence is insufficient")
         if state.risk_result.risk_level == RiskLevel.HIGH:
             conflicts.append("Risk Agent rates the evidence HIGH risk")
+        if state.risk_result.data_uncertainty_level == RiskLevel.HIGH:
+            conflicts.append("Data uncertainty is HIGH")
         if state.risk_result.veto:
             conflicts.append("Risk Agent issued a veto")
         if min(state.technical_result.confidence, state.fundamental_result.confidence) < 0.5:
@@ -70,7 +107,19 @@ class ManagerAgent(BaseAgent):
         conflicts = self.conflicts(state)
         already_extended = bool(state.technical_result and state.technical_result.timeframe.startswith("extended"))
         can_retry = state.iteration < state.max_iterations and not already_extended
-        request = bool(conflicts) and can_retry
+        technical_recheck_needed = bool(
+            state.technical_result
+            and state.fundamental_result
+            and (
+                state.technical_result.signal is Signal.UNKNOWN
+                or (
+                    state.technical_result.signal != state.fundamental_result.signal
+                    and state.fundamental_result.signal is not Signal.UNKNOWN
+                )
+                or (state.risk_result is not None and state.risk_result.risk_level is RiskLevel.HIGH)
+            )
+        )
+        request = bool(conflicts) and can_retry and technical_recheck_needed
         messages: list[AgentMessage] = []
         trace = [self.event("OBSERVE", "DETECT_CONFLICT", "; ".join(conflicts) if conflicts else "No material conflict")]
         iteration = state.iteration
@@ -110,10 +159,18 @@ class ManagerAgent(BaseAgent):
         fundamental = state.fundamental_result
         risk = state.risk_result
         conflicts = self.conflicts(state)
+        evidence_completeness = self._evidence_completeness(state)
         agreements: list[str] = []
         if technical.signal == fundamental.signal:
             agreements.append(f"Technical and Fundamental both return {technical.signal.value}")
-        if technical.signal == Signal.BUY and fundamental.signal == Signal.BUY and risk.risk_level != RiskLevel.HIGH and not risk.veto:
+        if (
+            technical.signal == Signal.BUY
+            and fundamental.signal == Signal.BUY
+            and risk.risk_level != RiskLevel.HIGH
+            and risk.data_uncertainty_level != RiskLevel.HIGH
+            and not risk.veto
+            and evidence_completeness >= 0.75
+        ):
             recommendation = Recommendation.BUY
         elif risk.veto or (risk.risk_level == RiskLevel.HIGH and Signal.SELL in (technical.signal, fundamental.signal)):
             recommendation = Recommendation.AVOID
@@ -129,11 +186,15 @@ class ManagerAgent(BaseAgent):
         }[recommendation]
 
         base_confidence = (technical.confidence + fundamental.confidence + max(0.1, 1 - risk.risk_score / 10)) / 3
-        confidence = max(0.15, min(0.9, base_confidence - 0.05 * len(conflicts)))
+        confidence = max(
+            0.15,
+            min(0.9, (base_confidence - 0.05 * len(conflicts)) * (0.55 + 0.45 * evidence_completeness)),
+        )
         evidence = [
             *(f"{item.label}: {item.value}" for item in technical.evidence[:3]),
             *(f"{item.label}: {item.value}" for item in fundamental.evidence[:3]),
             risk.reasoning_summary,
+            *(f"Research: {item.title} ({item.publisher})" for item in state.research_evidence[:2]),
         ]
         final = FinalDecision(
             ticker=state.ticker,
@@ -149,32 +210,52 @@ class ManagerAgent(BaseAgent):
                 f"Các giới hạn rủi ro và yếu tố chưa chắc chắn dẫn đến kết luận {recommendation_label}."
             ),
             evidence=evidence,
-        )
-        source_ids = [
-            source.source_id for source in state.market_data.source_refs
-        ] if state.market_data is not None else []
-        llm_review = self.llm_review(
-            "Synthesize specialist disagreements and explain the guarded conclusion",
-            {
-                "ticker": state.ticker,
-                "horizon": state.investment_horizon,
-                "deterministic_final_decision": final.model_dump(mode="json"),
-                "quantitative_forecast": state.price_forecast.model_dump(mode="json") if state.price_forecast else None,
-                "specialist_llm_reviews": [
-                    review.model_dump(mode="json") for review in state.llm_reviews
-                    if review.status == "GROUNDED"
-                ],
-            },
-            source_ids,
+            evidence_completeness=evidence_completeness,
         )
         return {
             "final_decision": final,
             "reanalysis_requested": False,
             "messages": [self.message(AgentName.USER, MessageType.FINAL_DECISION, "Final educational assessment", final.model_dump(mode="json"), final.confidence)],
-            "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": [
                 self.event("ACT", "FINAL_DECISION", f"{recommendation.value}, confidence={confidence:.2f}"),
-                *([self.event("REASON", "LLM_MANAGER_SYNTHESIS", f"Structured LLM review={llm_review.status}", "local_llm")] if llm_review is not None else []),
             ],
             "completed_tasks": ["final_decision"],
+            "agent_reports": [self.report(
+                stage="final_synthesis",
+                status="PARTIAL" if evidence_completeness < 0.75 else "COMPLETED",
+                summary=(
+                    f"Produced {recommendation.value} with evidence completeness "
+                    f"{evidence_completeness:.0%}."
+                ),
+                confidence=final.confidence,
+                output_key="final_decision",
+                tools_used=[],
+                assumptions=["Specialist scores and vetoes are authoritative inputs"],
+                missing_information=(
+                    ["Evidence completeness is below the BUY threshold"]
+                    if evidence_completeness < 0.75 else []
+                ),
+                evidence_count=len(evidence),
+            )],
         }
+
+    @staticmethod
+    def _evidence_completeness(state: AgentState) -> float:
+        """Measure coverage, not whether the evidence is positive or negative."""
+        technical = state.technical_result
+        fundamental = state.fundamental_result
+        risk = state.risk_result
+        score = 0.0
+        if state.market_data is not None and state.market_data.source_refs:
+            score += 0.25
+        if technical is not None and technical.evidence:
+            score += 0.20
+        if fundamental is not None and fundamental.evidence and fundamental.signal is not Signal.UNKNOWN:
+            score += 0.25
+        if risk is not None and any(section.evidence for section in risk.sections):
+            score += 0.15
+        if state.research_evidence:
+            score += 0.10
+        if state.price_forecast is not None and state.price_forecast.forecast_price is not None:
+            score += 0.05
+        return round(min(1.0, score), 2)

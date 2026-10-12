@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from stock_multi_agent.agents.base_agent import BaseAgent
+from stock_multi_agent.models.agent_contracts import AgentSpec, DataAgentContext
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState, TraceEvent
 from stock_multi_agent.tools.market_data import MarketDataTool
@@ -11,22 +12,36 @@ from stock_multi_agent.tools.market_data import MarketDataTool
 class DataAgent(BaseAgent):
     name = AgentName.DATA
     goal = "Acquire, validate, and normalize real stock data without making a recommendation."
+    spec = AgentSpec(
+        role=name,
+        goal=goal,
+        required_context=["ticker", "investment_horizon", "required_data"],
+        allowed_tools=["get_stock_data", "fetch_benchmark"],
+        output_type="MarketData",
+        can_use_llm=False,
+        decision_constraints=[
+            "Never fabricate market or financial data",
+            "Every accepted dataset must preserve source and timestamp metadata",
+            "Never issue an investment recommendation",
+        ],
+    )
 
     def __init__(self, market_tool: MarketDataTool, llm_advisor=None) -> None:
         self.market_tool = market_tool
         self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState) -> dict[str, object]:
-        observation = self.event("OBSERVE", "READ_REQUEST", f"Ticker={state.ticker}; horizon={state.investment_horizon}")
-        include_financials = "financials" in state.required_data
+        context = DataAgentContext.from_state(state)
+        observation = self.event("OBSERVE", "READ_REQUEST", f"Ticker={context.ticker}; horizon={context.investment_horizon}")
+        include_financials = "financials" in context.required_data
         requested = "OHLCV and financial metrics" if include_financials else "OHLCV only"
         call = self.event("ACT", "CALL_TOOL", f"Request real {requested}", "get_stock_data")
-        data = self.market_tool.get_stock_data(state.ticker, include_financials=include_financials)
+        data = self.market_tool.get_stock_data(context.ticker, include_financials=include_financials)
         benchmark_data = None
         benchmark_trace: list[TraceEvent] = []
         if (
-            "benchmark" in state.required_data
-            and state.ticker != "VNINDEX"
+            "benchmark" in context.required_data
+            and context.ticker != "VNINDEX"
             and os.getenv("STOCK_AGENT_BENCHMARK_ENABLED", "true").lower() not in {"0", "false", "off"}
         ):
             try:
@@ -96,4 +111,15 @@ class DataAgent(BaseAgent):
                 *benchmark_trace,
             ],
             "completed_tasks": ["data_acquisition"],
+            "agent_reports": [self.report(
+                stage="data_acquisition",
+                status="PARTIAL" if data.quality_report.issues else "COMPLETED",
+                summary=f"Loaded {len(data.bars)} sessions from {data.source}",
+                confidence=result.confidence or 0.0,
+                output_key="market_data",
+                tools_used=["get_stock_data", *(["fetch_benchmark"] if benchmark_data is not None else [])],
+                assumptions=[f"Provider price adjustment={data.price_adjustment.value}"],
+                missing_information=[issue.message for issue in data.quality_report.issues],
+                evidence_count=len(data.source_refs),
+            )],
         }

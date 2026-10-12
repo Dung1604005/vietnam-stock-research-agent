@@ -11,7 +11,7 @@ class EntityExtractor:
         "MA", "SMA", "EMA", "PE", "PB", "ROE", "ROA", "EPS", "VN", "USD",
         "USER", "CHART", "STOCK", "VOLUME", "RISK", "HIGH", "LOW", "MEDIUM",
         "TTCK", "CEO", "CFO", "EBITDA", "YOY", "QOQ", "HOSE", "HSX", "HNX", "UPCOM",
-        "ATO", "ATC", "LO", "MOK", "MAK", "MTL", "DCF", "CAPM", "ATR", "EV", "FCF",
+        "ATO", "ATC", "LO", "MOK", "MAK", "MTL", "DCF", "CAPM", "ATR", "ADX", "EV", "FCF",
     }
     _known_tickers = {
         "FPT", "CMG", "CTR", "ELC", "VNM", "HPG", "HSG", "VCB", "TCB", "MBB",
@@ -111,7 +111,7 @@ class EntityExtractor:
     @staticmethod
     def _indicators(text: str) -> list[str]:
         indicators: list[str] = []
-        for name in ("RSI", "MACD", "PE", "PB", "ROE", "ROA", "EPS"):
+        for name in ("RSI", "MACD", "ATR", "ADX", "PE", "PB", "ROE", "ROA", "EPS"):
             if re.search(rf"\b{name.lower()}\b", text):
                 indicators.append(name)
         for period in re.findall(r"\b(?:s?ma)\s*(20|50|100|200)\b", text):

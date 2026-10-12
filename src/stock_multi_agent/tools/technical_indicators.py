@@ -113,6 +113,57 @@ class TechnicalIndicatorToolkit:
         drawdowns = array / peaks - 1
         return float(abs(np.min(drawdowns)))
 
+    def average_true_range(
+        self,
+        highs: Sequence[float],
+        lows: Sequence[float],
+        closes: Sequence[float],
+        period: int = 14,
+    ) -> float:
+        high = self._array(highs, period + 1)
+        low = self._array(lows, period + 1)
+        close = self._array(closes, period + 1)
+        if not (len(high) == len(low) == len(close)):
+            raise ValueError("High, low, and close series must have equal length")
+        true_ranges = np.maximum.reduce([
+            high[1:] - low[1:],
+            np.abs(high[1:] - close[:-1]),
+            np.abs(low[1:] - close[:-1]),
+        ])
+        return float(np.mean(true_ranges[-period:]))
+
+    def adx(
+        self,
+        highs: Sequence[float],
+        lows: Sequence[float],
+        closes: Sequence[float],
+        period: int = 14,
+    ) -> float:
+        high = self._array(highs, period * 2 + 1)
+        low = self._array(lows, period * 2 + 1)
+        close = self._array(closes, period * 2 + 1)
+        if not (len(high) == len(low) == len(close)):
+            raise ValueError("High, low, and close series must have equal length")
+        up_move = high[1:] - high[:-1]
+        down_move = low[:-1] - low[1:]
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+        true_ranges = np.maximum.reduce([
+            high[1:] - low[1:],
+            np.abs(high[1:] - close[:-1]),
+            np.abs(low[1:] - close[:-1]),
+        ])
+        dx_values: list[float] = []
+        for endpoint in range(period, len(true_ranges) + 1):
+            atr_sum = float(np.sum(true_ranges[endpoint - period:endpoint]))
+            if atr_sum <= 0:
+                continue
+            plus_di = 100.0 * float(np.sum(plus_dm[endpoint - period:endpoint])) / atr_sum
+            minus_di = 100.0 * float(np.sum(minus_dm[endpoint - period:endpoint])) / atr_sum
+            denominator = plus_di + minus_di
+            dx_values.append(0.0 if denominator == 0 else 100.0 * abs(plus_di - minus_di) / denominator)
+        return float(np.mean(dx_values[-period:])) if dx_values else 0.0
+
     def support_resistance(self, values: Sequence[float], lookback: int = 60) -> dict[str, float]:
         array = self._array(values, min(lookback, 20))[-lookback:]
         return {

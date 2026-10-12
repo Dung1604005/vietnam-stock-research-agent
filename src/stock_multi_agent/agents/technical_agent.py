@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from stock_multi_agent.agents.base_agent import BaseAgent
+from stock_multi_agent.models.agent_contracts import AgentSpec, TechnicalAgentContext
 from stock_multi_agent.models.analysis import EvidenceItem, PriceAdjustment, Signal, TechnicalAnalysis
 from stock_multi_agent.models.llm import AgentLLMReview
 from stock_multi_agent.models.messages import AgentName, MessageType
@@ -19,18 +20,34 @@ class TechnicalAgent(BaseAgent):
 
     name = AgentName.TECHNICAL
     goal = "Assess price trend with a versioned indicator profile for the requested horizon."
+    spec = AgentSpec(
+        role=name,
+        goal=goal,
+        required_context=["market_data", "investment_horizon", "benchmark_data", "price_forecast"],
+        allowed_tools=[
+            "SMA", "RSI", "MACD", "annualized_volatility", "volume_ratio",
+            "average_traded_value", "BOLLINGER_BANDS", "MAX_DRAWDOWN",
+            "SUPPORT_RESISTANCE", "ATR", "ADX", "local_llm_indicator_planner",
+        ],
+        output_type="TechnicalAnalysis",
+        can_use_llm=True,
+        decision_constraints=[
+            "LLM may select allowlisted tools but never calculate indicator values",
+            "Python owns scores, signals, and numerical evidence",
+            "Forecast output is context and cannot directly override the technical signal",
+        ],
+    )
 
     def __init__(self, toolkit: TechnicalIndicatorToolkit, llm_advisor=None) -> None:
         self.tools = toolkit
         self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState, extended: bool = False) -> dict[str, object]:
-        if state.market_data is None:
-            raise ValueError("Technical Agent requires market data")
-        closes = [bar.close for bar in state.market_data.bars]
-        volumes = [bar.volume for bar in state.market_data.bars]
-        profile = LONG_HORIZON if extended else self.tools.horizon_profile(state.investment_horizon)
-        timeframe = f"extended {state.investment_horizon} ({profile.name} profile)" if extended else f"{state.investment_horizon} ({profile.name} profile)"
+        context = TechnicalAgentContext.from_state(state)
+        closes = [bar.close for bar in context.market_data.bars]
+        volumes = [bar.volume for bar in context.market_data.bars]
+        profile = LONG_HORIZON if extended else self.tools.horizon_profile(context.investment_horizon)
+        timeframe = f"extended {context.investment_horizon} ({profile.name} profile)" if extended else f"{context.investment_horizon} ({profile.name} profile)"
         traces: list[TraceEvent] = [self.event(
             "OBSERVE", "READ_MARKET_DATA", f"Observe {len(closes)} OHLCV bars; profile={profile.name}",
         )]
@@ -65,6 +82,8 @@ class TechnicalAgent(BaseAgent):
                 "BOLLINGER_BANDS": "dải Bollinger",
                 "MAX_DRAWDOWN": "mức sụt giảm tối đa",
                 "SUPPORT_RESISTANCE": "hỗ trợ/kháng cự",
+                "ATR": "biên độ dao động ATR",
+                "ADX": "sức mạnh xu hướng ADX",
             }
             selected_display = ", ".join(display_labels[item] for item in selected)
             llm_review = AgentLLMReview(
@@ -95,6 +114,17 @@ class TechnicalAgent(BaseAgent):
             "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": traces,
             "completed_tasks": ["technical_reanalysis" if extended else "technical_analysis"],
+            "agent_reports": [self.report(
+                stage="technical_reanalysis" if extended else "technical_analysis",
+                status="UNAVAILABLE" if analysis.signal is Signal.UNKNOWN else "COMPLETED",
+                summary=analysis.reasoning_summary,
+                confidence=analysis.confidence,
+                output_key="technical_result",
+                tools_used=analysis.tools_used,
+                assumptions=[f"Horizon profile={analysis.horizon_profile}"],
+                missing_information=list(analysis.risks) if analysis.signal is Signal.UNKNOWN else [],
+                evidence_count=len(analysis.evidence),
+            )],
         }
 
     def _run_default(
@@ -119,6 +149,8 @@ class TechnicalAgent(BaseAgent):
         volatility = self.tools.annualized_volatility(closes[-profile.volatility_window:])
         volume_ratio = self.tools.volume_ratio(volumes)
         average_traded_value = self.tools.average_traded_value(closes, volumes)
+        highs = [bar.high for bar in state.market_data.bars]
+        lows = [bar.low for bar in state.market_data.bars]
         return_window = min(profile.return_window, len(closes) - 1)
         trailing_return = closes[-1] / closes[-1 - return_window] - 1
         regime = "UPTREND" if closes[-1] > sma_fast > sma_slow else "DOWNTREND" if closes[-1] < sma_fast < sma_slow else "MIXED"
@@ -162,6 +194,25 @@ class TechnicalAgent(BaseAgent):
                     ["bars.close"],
                 ))
                 selected.append("Support/resistance")
+            elif check == "ATR":
+                atr = self.tools.average_true_range(highs, lows, closes, profile.rsi_period)
+                atr_percent = atr / closes[-1] if closes[-1] else 0.0
+                evidence.append(self._evidence(
+                    state, "LLM-selected ATR", f"ATR{profile.rsi_period} {atr:.2f} ({atr_percent:.1%} of close)",
+                    ["bars.high", "bars.low", "bars.close"],
+                ))
+                selected.append(f"ATR{profile.rsi_period}")
+                if atr_percent > 0.05:
+                    risks.append("ATR exceeds 5% of the latest close, indicating wide daily ranges")
+            elif check == "ADX":
+                adx = self.tools.adx(highs, lows, closes, profile.rsi_period)
+                evidence.append(self._evidence(
+                    state, "LLM-selected ADX", f"ADX{profile.rsi_period} {adx:.1f}",
+                    ["bars.high", "bars.low", "bars.close"],
+                ))
+                selected.append(f"ADX{profile.rsi_period}")
+                if adx < 20:
+                    risks.append("ADX indicates that the current trend is weak")
 
         contributions["price_vs_fast_sma"] = 1.0 if closes[-1] > sma_fast else -1.0
         contributions["fast_vs_slow_sma"] = 1.25 if sma_fast > sma_slow else -1.25
@@ -284,6 +335,8 @@ class TechnicalAgent(BaseAgent):
         contributions: dict[str, float] = {}
         evidence: list[EvidenceItem] = []
         risks: list[str] = []
+        highs = [bar.high for bar in state.market_data.bars]
+        lows = [bar.low for bar in state.market_data.bars]
         traces = [self.event("REASON", "SELECT_TOOLS", f"Query requests only: {', '.join(selected)}")]
         for indicator in selected:
             if indicator == "RSI":
@@ -314,6 +367,25 @@ class TechnicalAgent(BaseAgent):
                 evidence.append(self._evidence(state, "Volume ratio", f"{value:.2f}", ["bars.volume"]))
                 contributions["VOLUME"] = 0.5 if value > 1.2 else 0.0
                 score += contributions["VOLUME"]
+            elif indicator == "ATR":
+                value = self.tools.average_true_range(highs, lows, closes, profile.rsi_period)
+                percent = value / closes[-1] if closes[-1] else 0.0
+                evidence.append(self._evidence(
+                    state, f"ATR{profile.rsi_period}", f"{value:.2f} ({percent:.1%} of close)",
+                    ["bars.high", "bars.low", "bars.close"],
+                ))
+                contributions["ATR"] = 0.0
+                if percent > 0.05:
+                    risks.append("ATR exceeds 5% of the latest close, indicating wide daily ranges")
+            elif indicator == "ADX":
+                value = self.tools.adx(highs, lows, closes, profile.rsi_period)
+                evidence.append(self._evidence(
+                    state, f"ADX{profile.rsi_period}", f"{value:.1f}",
+                    ["bars.high", "bars.low", "bars.close"],
+                ))
+                contributions["ADX"] = 0.0
+                if value < 20:
+                    risks.append("ADX indicates that the current trend is weak")
             traces.append(self.event("ACT", "CALL_TOOL", f"Calculated {indicator}", indicator))
         if not selected:
             selected = ["RSI"]

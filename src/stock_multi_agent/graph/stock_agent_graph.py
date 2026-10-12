@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from stock_multi_agent.agents import DataAgent, FundamentalAgent, ManagerAgent, RiskAgent, TechnicalAgent
+from stock_multi_agent.agents import DataAgent, FundamentalAgent, ManagerAgent, ResearchAgent, RiskAgent, TechnicalAgent
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.services.price_forecast import PriceForecastService
 
@@ -13,6 +13,7 @@ class StockAgentGraph:
     def __init__(
         self,
         data_agent: DataAgent,
+        research_agent: ResearchAgent,
         technical_agent: TechnicalAgent,
         fundamental_agent: FundamentalAgent,
         risk_agent: RiskAgent,
@@ -20,6 +21,7 @@ class StockAgentGraph:
         price_forecast_service: PriceForecastService,
     ) -> None:
         self.data_agent = data_agent
+        self.research_agent = research_agent
         self.technical_agent = technical_agent
         self.fundamental_agent = fundamental_agent
         self.risk_agent = risk_agent
@@ -32,6 +34,7 @@ class StockAgentGraph:
         graph.add_node("manager_plan", self.manager_agent.plan)
         graph.add_node("data", self.data_agent.run)
         graph.add_node("forecast", self._forecast)
+        graph.add_node("research", self.research_agent.run)
         graph.add_node("dispatch_specialists", self.manager_agent.dispatch_specialists)
         graph.add_node("technical", lambda state: self.technical_agent.run(state, extended=False))
         graph.add_node("fundamental", self.fundamental_agent.run)
@@ -45,7 +48,8 @@ class StockAgentGraph:
         graph.add_edge(START, "manager_plan")
         graph.add_edge("manager_plan", "data")
         graph.add_edge("data", "forecast")
-        graph.add_edge("forecast", "dispatch_specialists")
+        graph.add_edge("forecast", "research")
+        graph.add_edge("research", "dispatch_specialists")
         graph.add_edge("dispatch_specialists", "technical")
         graph.add_edge("dispatch_specialists", "fundamental")
         graph.add_edge(["technical", "fundamental"], "dispatch_risk")

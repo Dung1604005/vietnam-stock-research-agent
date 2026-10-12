@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from stock_multi_agent.models.chat import AssistantResponse, ResponseTable, ResponseType
+from stock_multi_agent.models.messages import AgentName
 from stock_multi_agent.models.state import AgentState
 
 
@@ -24,7 +25,11 @@ class ResponseComposer:
             f"### {state.ticker} · Phân tích {cls._horizon_label(state.investment_horizon)}\n\n"
             f"**Kỹ thuật:** {cls._signal_label(technical.signal.value)} · {technical.score:.1f}/10  \n"
             f"**Cơ bản:** {cls._signal_label(fundamental.signal.value)} · {fundamental.score:.1f}/10  \n"
-            f"**Rủi ro:** {cls.RISK_LABELS.get(risk.risk_level.value, risk.risk_level.value)} · {risk.risk_score:.1f}/10\n\n"
+            f"**Rủi ro đo lường:** {cls.RISK_LABELS.get(risk.risk_level.value, risk.risk_level.value)} · {risk.risk_score:.1f}/10  \n"
+            f"**Rủi ro riêng doanh nghiệp:** {cls.RISK_LABELS.get((risk.issuer_risk_level or risk.risk_level).value, (risk.issuer_risk_level or risk.risk_level).value)} · "
+            f"{risk.issuer_risk_score if risk.issuer_risk_score is not None else risk.risk_score:.1f}/10  \n"
+            f"**Độ bất định dữ liệu:** {cls.RISK_LABELS.get(risk.data_uncertainty_level.value, risk.data_uncertainty_level.value)} · "
+            f"{risk.data_uncertainty_score:.1f}/10\n\n"
             f"#### Kết luận: {cls.RECOMMENDATION_LABELS.get(final.recommendation.value, final.recommendation.value)}\n"
             f"{final.final_reasoning}"
         )
@@ -49,9 +54,19 @@ class ResponseComposer:
                 "fundamental_signal": fundamental.signal.value,
                 "risk_score": risk.risk_score,
                 "risk_level": risk.risk_level.value,
+                "issuer_risk_score": risk.issuer_risk_score,
+                "issuer_risk_level": (risk.issuer_risk_level or risk.risk_level).value,
+                "data_uncertainty_score": risk.data_uncertainty_score,
+                "data_uncertainty_level": risk.data_uncertainty_level.value,
+                "evidence_completeness": final.evidence_completeness,
                 "price_forecast": forecast.model_dump(mode="json") if forecast else None,
                 "conflicts": final.conflicts,
                 "agent_messages": cls._agent_messages(state),
+                "research_citations": cls._research_citations(state),
+                **cls._agent_quality_metadata(state, [
+                    AgentName.DATA, AgentName.RESEARCH, AgentName.TECHNICAL,
+                    AgentName.FUNDAMENTAL, AgentName.RISK, AgentName.MANAGER,
+                ]),
             },
         )
 
@@ -114,6 +129,7 @@ class ResponseComposer:
             metadata={
                 "technical_score": result.score, "technical_signal": result.signal.value,
                 "price_forecast": cls._forecast_metadata(state), "agent_messages": cls._agent_messages(state),
+                **cls._agent_quality_metadata(state, [AgentName.DATA, AgentName.TECHNICAL]),
             },
         )
 
@@ -138,6 +154,10 @@ class ResponseComposer:
             metadata={
                 "fundamental_score": result.score, "fundamental_signal": result.signal.value,
                 "price_forecast": cls._forecast_metadata(state), "agent_messages": cls._agent_messages(state),
+                "research_citations": cls._research_citations(state),
+                **cls._agent_quality_metadata(
+                    state, [AgentName.DATA, AgentName.RESEARCH, AgentName.FUNDAMENTAL],
+                ),
             },
         )
 
@@ -151,7 +171,10 @@ class ResponseComposer:
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Đánh giá rủi ro {state.ticker}\n\n"
-                f"**Mức rủi ro:** {result.risk_level.value} · **Điểm:** {result.risk_score:.1f}/10 · "
+                f"**Rủi ro đo lường:** {result.risk_level.value} · **Điểm:** {result.risk_score:.1f}/10  \n"
+                f"**Rủi ro riêng doanh nghiệp:** {(result.issuer_risk_level or result.risk_level).value} · "
+                f"{result.issuer_risk_score if result.issuer_risk_score is not None else result.risk_score:.1f}/10  \n"
+                f"**Độ bất định dữ liệu:** {result.data_uncertainty_level.value} · {result.data_uncertainty_score:.1f}/10 · "
                 f"**Veto:** {'Có' if result.veto else 'Không'}\n\n{result.reasoning_summary}\n\n{critiques}"
             ),
             response_type=ResponseType.ANALYSIS,
@@ -162,12 +185,35 @@ class ResponseComposer:
             metadata={
                 "risk_score": result.risk_score,
                 "risk_level": result.risk_level.value,
+                "issuer_risk_score": result.issuer_risk_score,
+                "issuer_risk_level": (result.issuer_risk_level or result.risk_level).value,
+                "data_uncertainty_score": result.data_uncertainty_score,
+                "data_uncertainty_level": result.data_uncertainty_level.value,
                 "veto": result.veto,
                 "price_forecast": cls._forecast_metadata(state),
                 "risk_sections": [section.model_dump(mode="json") for section in result.sections],
                 "agent_messages": cls._agent_messages(state),
+                "research_citations": cls._research_citations(state),
+                **cls._agent_quality_metadata(state, [
+                    AgentName.DATA, AgentName.RESEARCH, AgentName.TECHNICAL,
+                    AgentName.FUNDAMENTAL, AgentName.RISK,
+                ]),
             },
         )
+
+    @staticmethod
+    def _agent_quality_metadata(state: AgentState, expected_agents: list[AgentName]) -> dict:
+        from stock_multi_agent.services.agent_evaluation import AgentEvaluationService
+
+        evaluation = AgentEvaluationService().evaluate(state, expected_agents)
+        return {
+            "agent_reports": [report.model_dump(mode="json") for report in state.agent_reports],
+            "agent_evaluation": evaluation.model_dump(mode="json"),
+        }
+
+    @staticmethod
+    def _research_citations(state: AgentState) -> list[dict]:
+        return [citation.model_dump(mode="json") for citation in state.research_evidence]
 
     @staticmethod
     def _forecast_metadata(state: AgentState) -> dict | None:

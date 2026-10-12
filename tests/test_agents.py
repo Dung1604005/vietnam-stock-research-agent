@@ -23,12 +23,13 @@ def _state_with_results(market_data) -> AgentState:
     )
 
 
-def test_risk_vetoes_volatile_conflicting_case(market_data) -> None:
+def test_high_measured_risk_does_not_veto_below_severe_threshold(market_data) -> None:
     state = _state_with_results(market_data)
     update = RiskAgent(TechnicalIndicatorToolkit()).run(state)
     result = update["risk_result"]
     assert result.risk_level is RiskLevel.HIGH
-    assert result.veto is True
+    assert result.veto is False
+    assert result.issuer_risk_level is RiskLevel.HIGH
     assert any("disagree" in item for item in result.criticisms)
 
 
@@ -60,10 +61,14 @@ def test_missing_fundamental_evidence_is_uncertainty_not_automatic_high_risk(mar
 
     result = RiskAgent(TechnicalIndicatorToolkit()).run(state)["risk_result"]
 
-    assert result.risk_level is RiskLevel.MEDIUM
+    assert result.risk_level is RiskLevel.LOW
     assert result.risk_score < 3.5
+    assert result.data_uncertainty_level is RiskLevel.MEDIUM
+    assert result.data_uncertainty_score > result.risk_score
     assert result.veto is False
-    assert result.policy_version == "risk-v3-balanced"
+    assert result.policy_version == "risk-v4-decomposed"
+    state.risk_result = result
+    assert ManagerAgent().review(state)["reanalysis_requested"] is False
 
 
 def test_manager_detects_conflict_and_routes_reanalysis(market_data) -> None:

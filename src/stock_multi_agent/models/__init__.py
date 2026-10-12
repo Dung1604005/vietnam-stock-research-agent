@@ -10,6 +10,17 @@ from stock_multi_agent.models.messages import AgentMessage, AgentName, MessageTy
 from stock_multi_agent.models.data import DataQualityReport, Instrument, SourceReference
 from stock_multi_agent.models.forecast import ForecastStatus, PriceForecast
 from stock_multi_agent.models.llm import AgentLLMReview
+from stock_multi_agent.models.agent_contracts import (
+    AgentEvaluationSummary,
+    AgentExecutionReport,
+    AgentSpec,
+    DataAgentContext,
+    FundamentalAgentContext,
+    ManagerContext,
+    ResearchAgentContext,
+    RiskAgentContext,
+    TechnicalAgentContext,
+)
 from stock_multi_agent.models.knowledge import (
     KnowledgeChunk,
     KnowledgeCitation,
@@ -36,6 +47,15 @@ __all__ = [
     "Citation", "DocumentChunk", "EvidenceBundle", "EvidenceClaim", "ExternalEvidenceCitation", "ExtractedDocument",
     "FetchedDocument", "ResearchDocument", "ResearchDocumentType", "ResearchPlan", "ResearchQuery", "WebCitation",
     "AgentLLMReview",
+    "AgentEvaluationSummary",
+    "AgentExecutionReport",
+    "AgentSpec",
+    "DataAgentContext",
+    "FundamentalAgentContext",
+    "ManagerContext",
+    "ResearchAgentContext",
+    "RiskAgentContext",
+    "TechnicalAgentContext",
     "KnowledgeChunk",
     "KnowledgeCitation",
     "KnowledgeDocument",

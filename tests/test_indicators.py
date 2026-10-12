@@ -23,3 +23,16 @@ def test_indicator_rejects_insufficient_data() -> None:
     with pytest.raises(ValueError):
         TechnicalIndicatorToolkit().sma([1, 2], 3)
 
+
+def test_atr_and_adx_are_finite_deterministic_values() -> None:
+    tools = TechnicalIndicatorToolkit()
+    closes = [100.0 + index * 0.4 + (0.2 if index % 2 else -0.2) for index in range(40)]
+    highs = [value + 1.0 for value in closes]
+    lows = [value - 1.0 for value in closes]
+
+    atr = tools.average_true_range(highs, lows, closes, 14)
+    adx = tools.adx(highs, lows, closes, 14)
+
+    assert atr > 0
+    assert 0 <= adx <= 100
+

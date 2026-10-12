@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from stock_multi_agent.agents.base_agent import BaseAgent
+from stock_multi_agent.models.agent_contracts import AgentSpec, FundamentalAgentContext
 from stock_multi_agent.models.analysis import EvidenceItem, FundamentalAnalysis, Signal
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
@@ -10,15 +11,28 @@ from stock_multi_agent.tools.financial_data import FinancialToolkit
 class FundamentalAgent(BaseAgent):
     name = AgentName.FUNDAMENTAL
     goal = "Assess business quality and valuation independently from price trends."
+    spec = AgentSpec(
+        role=name,
+        goal=goal,
+        required_context=["market_data.financials", "financial_statements", "research_evidence"],
+        allowed_tools=["financial_metric_normalization", "sector_template", "quality_weighting"],
+        output_type="FundamentalAnalysis",
+        can_use_llm=False,
+        decision_constraints=[
+            "Never infer a missing financial value from prose",
+            "Reduce confidence when evidence is stale or low quality",
+            "Research citations provide context but do not directly change the numerical score",
+        ],
+    )
 
     def __init__(self, toolkit: FinancialToolkit, llm_advisor=None) -> None:
         self.tools = toolkit
         self.llm_advisor = llm_advisor
 
     def run(self, state: AgentState) -> dict[str, object]:
-        if state.market_data is None:
-            raise ValueError("Fundamental Agent requires market data")
-        metrics = state.market_data.financials
+        context = FundamentalAgentContext.from_state(state)
+        metrics = context.market_data.financials
+        research_context = self._research_context(state)
         evidence_reliability, quality_notes = self._financial_reliability(state)
         statement_metrics = self._statement_metrics(state)
         stale_ratio_metrics = any(
@@ -46,7 +60,9 @@ class FundamentalAgent(BaseAgent):
                 reasoning_summary="Fundamental evidence is absent; no valuation conclusion is made.",
                 sector_template=self._sector_template(state),
                 policy_version="fundamental-v3-quality-weighted",
+                research_context_count=len(research_context),
             )
+            result.evidence.extend(research_context)
         else:
             score = 5.0
             template = self._sector_template(state)
@@ -54,6 +70,7 @@ class FundamentalAgent(BaseAgent):
             strengths: list[str] = []
             weaknesses: list[str] = []
             evidence: list[EvidenceItem] = []
+            evidence.extend(research_context)
             contributions: dict[str, float] = {}
 
             def assess(value: float | None, good: float, bad: float, label: str) -> None:
@@ -164,13 +181,17 @@ class FundamentalAgent(BaseAgent):
                     *([] if statement_metrics.get("cash_conversion") is not None else ["cash conversion ratio"]),
                     "TTM statement series", "valuation history", "dilution/dividend history"
                 ],
+                research_context_count=len(research_context),
             )
             traces.append(self.event(
                 "REASON", "SCORE_FUNDAMENTALS",
                 f"Quality-weighted fundamental score={score:.1f}/10; raw={raw_score:.1f}; reliability={evidence_reliability:.0%}",
             ))
 
-        source_ids = [source.source_id for source in state.market_data.source_refs]
+        source_ids = [
+            *[source.source_id for source in state.market_data.source_refs],
+            *[citation.chunk_id for citation in state.research_evidence],
+        ]
         llm_review = self.llm_review(
             "Interpret business quality, valuation tensions, and missing fundamental evidence",
             {
@@ -193,7 +214,34 @@ class FundamentalAgent(BaseAgent):
             "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": traces,
             "completed_tasks": ["fundamental_analysis"],
+            "agent_reports": [self.report(
+                stage="fundamental_analysis",
+                status="UNAVAILABLE" if result.signal is Signal.UNKNOWN else "COMPLETED",
+                summary=result.reasoning_summary,
+                confidence=result.confidence,
+                output_key="fundamental_result",
+                tools_used=["sector_template", "quality_weighting", "financial_metric_normalization"],
+                assumptions=[f"Sector template={result.sector_template}"],
+                missing_information=result.unavailable_metrics,
+                evidence_count=len(result.evidence),
+            )],
         }
+
+    @staticmethod
+    def _research_context(state: AgentState) -> list[EvidenceItem]:
+        evidence: list[EvidenceItem] = []
+        for citation in state.research_evidence[:3]:
+            quote = citation.quote if len(citation.quote) <= 500 else citation.quote[:497] + "..."
+            evidence.append(EvidenceItem(
+                label=f"Research context: {citation.title}"[:160],
+                value=quote,
+                input_fields=["research_evidence"],
+                source_ids=[citation.document_id, citation.chunk_id],
+                as_of=citation.published_at.date(),
+                confidence=min(0.75, citation.retrieval_score),
+                note=f"Publisher: {citation.publisher}; contextual evidence only, excluded from numerical score",
+            ))
+        return evidence
 
     @staticmethod
     def _sector_template(state: AgentState) -> str:

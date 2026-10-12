@@ -1,6 +1,6 @@
 # Kiến trúc hiện tại
 
-Tài liệu này mô tả repository sau cập nhật Knowledge Base ngày 11/10/2026. Nội dung bên dưới phản ánh code đang tồn tại; không mô tả các component dự kiến trong tương lai.
+Tài liệu này mô tả repository sau cập nhật hợp đồng Agent ngày 12/10/2026. Nội dung bên dưới phản ánh code đang tồn tại; không mô tả các component dự kiến trong tương lai.
 
 ## 1. Tóm tắt hiện trạng
 
@@ -57,6 +57,7 @@ flowchart TD
 
     LG --> M[ManagerAgent]
     LG --> D[DataAgent]
+    LG --> RA[ResearchAgent]
     LG --> T[TechnicalAgent]
     LG --> F[FundamentalAgent]
     LG --> R[RiskAgent]
@@ -66,6 +67,7 @@ flowchart TD
     T --> TIT[TechnicalIndicatorToolkit]
     F --> FT[FinancialToolkit]
     R --> TIT
+    RA --> RS
 
     CS --> RC[ResponseComposer]
     CS --> CH[ChartService]
@@ -108,7 +110,9 @@ Luồng full analysis hiện tại:
 flowchart TD
     S[START] --> MP[Manager.plan]
     MP --> D[DataAgent.run]
-    D --> DS[Manager.dispatch_specialists]
+    D --> PF[PriceForecastService]
+    PF --> RA[ResearchAgent.run]
+    RA --> DS[Manager.dispatch_specialists]
     DS --> T[TechnicalAgent.run]
     DS --> F[FundamentalAgent.run]
     T --> J[Join]
@@ -124,7 +128,7 @@ flowchart TD
     FIN --> E[END]
 ```
 
-`AgentState` chứa ticker, horizon, requested data/indicators, market data, ba specialist result, messages, trace, plan, completed tasks, iteration flags và final decision. `messages`, `trace` và `completed_tasks` dùng reducer cộng danh sách để merge hai nhánh Technical/Fundamental.
+`AgentState` chứa ticker, horizon, requested data/indicators, market data, research citations, ba specialist result, messages, trace, plan, completed tasks, iteration flags và final decision. `messages`, `llm_reviews`, `agent_reports`, `trace` và `completed_tasks` dùng reducer cộng danh sách để merge các nhánh. Mỗi class Agent khai báo `AgentSpec`; mỗi lần chạy phát `AgentExecutionReport` chung gồm stage, status, confidence, tool, missing information và số evidence.
 
 Re-analysis thực tế chỉ mở rộng Technical Agent bằng SMA200, support/resistance và max drawdown; Fundamental Agent không được chạy lại. Vòng lặp dừng khi đã extended hoặc hết `max_iterations`.
 
@@ -191,13 +195,13 @@ Hạn chế chính:
 
 Hạn chế chính:
 
-- Không có liquidity risk, beta/correlation, concentration, event/news risk, accounting risk, macro/sector exposure hay user portfolio context.
-- Score/veto chưa được calibration hoặc backtest.
-- Risk route luôn cần cả Technical và Fundamental result; chưa có risk decomposition theo câu hỏi.
+- Có volatility, drawdown, liquidity, leverage, issuer event và portfolio concentration khi input tương ứng tồn tại; chưa có beta/correlation đầy đủ, macro/sector exposure hoặc accounting forensic model.
+- `RiskAnalysis` tách `issuer_risk_*` khỏi `data_uncertainty_*`; thiếu dữ liệu không còn tự động làm issuer risk tăng cao. Veto chỉ đến từ trading suspension đã xác minh hoặc issuer score cực cao.
+- Score/veto chưa được calibration bằng dữ liệu kết quả đầu tư thật.
 
 ### Manager
 
-`ManagerAgent` lập một plan cố định, phát message, phát hiện conflict, chọn re-analysis hay finalize và áp policy recommendation `BUY/HOLD/WATCH/AVOID`. Đây là component có action choice rõ nhất, nhưng chưa sinh plan mới từ mục tiêu người dùng; lựa chọn của nó được giới hạn trong các branch viết sẵn.
+`ManagerAgent` lập một plan cố định, phát message, phát hiện conflict, chọn re-analysis hay finalize và áp policy recommendation `BUY/HOLD/WATCH/AVOID`. Manager không gọi LLM. Policy BUY yêu cầu hai specialist cùng BUY, không có veto/HIGH data uncertainty và `evidence_completeness >= 0.75`; confidence cũng giảm theo evidence coverage.
 
 Recommendation có disclaimer giáo dục nhưng vẫn mang nhãn hành động mạnh. Hệ thống chưa thu thập risk profile, time horizon thực dụng, position context hoặc suitability để các nhãn này đủ tin cậy cho sử dụng đầu tư thật.
 
@@ -206,13 +210,14 @@ Recommendation có disclaimer giáo dục nhưng vẫn mang nhãn hành động 
 | Component hiện tại | Reasoning? | Planning? | Action choice? | Đánh giá trung thực | Hướng mục tiêu |
 |---|---:|---:|---:|---|---|
 | `DataAgent` | Không đáng kể | Không | Chỉ chọn include financials từ state | Wrapper có trace/message quanh `MarketDataTool` | Đổi vai trò logic thành `DataService`; graph node vẫn có thể gọi service |
-| `TechnicalAgent` | Rule-based scoring | Chọn tool rất hạn chế | Requested/default/extended | Deterministic analysis engine, chưa phải autonomous agent | `TechnicalAnalysisEngine`; agent chỉ cần nếu sau này phải chọn method theo task/evidence |
+| `ResearchAgent` | Chọn hai query bounded | Kế hoạch truy xuất ngắn | Dừng sớm khi đủ citation | Agent mỏng quanh hybrid retriever, không sinh signal | Giữ bounded; không cho truy cập web tùy ý hoặc điều khiển score |
+| `TechnicalAgent` | Rule-based scoring | LLM có thể chọn tối đa hai tool allowlist | Requested/default/extended | Hybrid agent: LLM chỉ chọn tool; Python tính và chấm điểm | Giữ ranh giới tool-planning này; không cho LLM tự tạo chỉ báo |
 | `FundamentalAgent` | Rule-based scoring | Không | Không | Deterministic scoring function | `FundamentalAnalysisEngine` với model theo ngành/kỳ |
-| `RiskAgent` | Cross-check nhiều output | Không tạo plan | Veto theo rule | Ranh giới critic hữu ích, nhưng implementation là deterministic risk engine | Giữ `RiskEngine`; có thể thêm Critic Agent để kiểm tra assumption/evidence |
+| `RiskAgent` | Cross-check nhiều output | Không tạo plan | Veto theo rule | Deterministic risk engine, tách measured risk và data uncertainty | Giữ policy deterministic và đánh giá hai trục riêng biệt |
 | `ManagerAgent` | Có tổng hợp/conflict policy | Có plan nhưng hard-code | Re-analyze hoặc finalize | Component agent-like rõ nhất | Giữ làm bounded Supervisor với typed task plan |
 | `IntentRouter` | Không | Mapping cố định | Route theo enum | Router/service, không phải agent | Giữ deterministic policy hoặc planner có guardrail |
 | `ChartService` | Không | Không | Chọn chart từ typed request | Service deterministic đúng vai trò | Giữ nguyên nguyên tắc |
-| `RAGService` / `ResearchStore` / `WebResearchService` | LLM chỉ tổng hợp evidence đã retrieve | Không | Vector+FTS local trước, web discovery khi local miss | Retriever/indexer là deterministic service; generation bị khóa bằng source ID | Giữ retriever là service; chỉ thêm Research Agent nếu sau này cần multi-step planning |
+| `RAGService` / `ResearchStore` / `WebResearchService` | LLM chỉ tổng hợp evidence đã retrieve | Không | Vector+FTS local trước, web discovery khi local miss | Retriever/indexer là deterministic service; generation bị khóa bằng source ID | Giữ là tool/service cho Research Agent và chat research route |
 
 Không cần duy trì đúng năm agent ở kiến trúc sản phẩm. Ranh giới nên dựa vào quyền ra quyết định, không dựa vào tên class hay việc class có emit message.
 
@@ -227,7 +232,7 @@ Do đó:
 - Summary không phải semantic summarization; nó nối snippet của message bị loại.
 - Chưa có concurrency control hoặc durable audit record.
 
-UI hiển thị card, table, chart, source/date, warning, semantic interpretation (gồm parser latency/fallback) và agent trace/task plan. Error handler tổng quát có thể đưa exception detail vào warning; phù hợp demo/debug hơn production.
+UI hiển thị card, table, chart, source/date, warning, semantic interpretation (gồm parser latency/fallback) và agent trace/task plan. Response metadata có thêm `agent_reports`, `agent_evaluation`, research citation và hai trục risk/uncertainty để debug/evaluate pipeline. Error handler tổng quát có thể đưa exception detail vào warning; phù hợp demo/debug hơn production.
 
 ## 10. Tests và mức assurance hiện tại
 

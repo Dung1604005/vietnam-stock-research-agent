@@ -199,7 +199,7 @@ def test_llm_analyst_adds_grounded_commentary_without_overriding_policy() -> Non
     assert "Nhận định bổ sung từ Local LLM" in response.message
 
 
-def test_specialist_agents_use_structured_llm_reviews_without_overriding_decision() -> None:
+def test_only_technical_agent_uses_llm_for_bounded_tool_planning() -> None:
     provider = FakeSpecialistProvider()
     advisor = AgentLLMAdvisor(provider=provider, enabled=True)
     service = ChatService(
@@ -213,13 +213,12 @@ def test_specialist_agents_use_structured_llm_reviews_without_overriding_decisio
 
     reviews = response.metadata["llm_specialist_reviews"]
     roles = {item["agent"] for item in reviews if item["status"] == "GROUNDED"}
-    assert roles == {"data", "technical", "fundamental", "risk", "manager"}
+    assert roles == {"technical"}
     assert all("invented:source" not in item["cited_source_ids"] for item in reviews)
     assert response.metadata["recommendation"] in {"BUY", "HOLD", "WATCH", "AVOID"}
     assert all(item["controls_numeric_output"] is False for item in reviews)
     assert "Nhận định từ LLM" in response.message
-    downstream = [item for item in provider.payloads if item.get("specialist_role") in {"risk", "manager"}]
-    assert all(item["facts"]["quantitative_forecast"] is not None for item in downstream)
+    assert not [item for item in provider.payloads if item.get("specialist_role") in {"data", "fundamental", "risk", "manager"}]
     technical_plans = [item for item in provider.payloads if item.get("task") == "Chọn phép tính kỹ thuật bổ sung"]
     assert technical_plans
     assert technical_plans[0]["facts"]["forecast_agent"] is not None

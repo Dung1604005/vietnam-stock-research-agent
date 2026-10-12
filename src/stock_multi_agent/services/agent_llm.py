@@ -26,7 +26,7 @@ class _CompactVietnameseReview(BaseModel):
 
 class _TechnicalIndicatorPlan(BaseModel):
     selected_indicators: list[
-        Literal["BOLLINGER_BANDS", "MAX_DRAWDOWN", "SUPPORT_RESISTANCE"]
+        Literal["BOLLINGER_BANDS", "MAX_DRAWDOWN", "SUPPORT_RESISTANCE", "ATR", "ADX"]
     ] = Field(min_length=1, max_length=2)
     rationale: str = Field(min_length=1, max_length=240)
     cited_source_ids: list[str] = Field(default_factory=list, max_length=10)
@@ -128,7 +128,7 @@ CHƯA XÁC ĐỊNH và drawdown là mức sụt giảm. Phản hồi đúng JSON
             return None
         system = """Bạn là bộ lập kế hoạch công cụ cho Technical Agent chứng khoán Việt Nam.
 Đọc dữ liệu tóm tắt từ Data Agent và dự báo định lượng, sau đó chọn 1 hoặc 2 phép kiểm tra
-bổ sung phù hợp nhất trong BOLLINGER_BANDS, MAX_DRAWDOWN, SUPPORT_RESISTANCE. Không tự tính
+bổ sung phù hợp nhất trong BOLLINGER_BANDS, MAX_DRAWDOWN, SUPPORT_RESISTANCE, ATR, ADX. Không tự tính
 giá trị chỉ báo, không đưa ra tín hiệu MUA/BÁN và không viết phân tích dài. Rationale chỉ gồm
 một câu tiếng Việt ngắn. Chỉ dùng mã nguồn nằm trong allowed_source_ids và trả đúng JSON schema."""
         payload = {

@@ -99,6 +99,11 @@ def render_analysis_card(response: AssistantResponse) -> None:
         items.append(("Fundamental", f"{metadata['fundamental_score']:.1f}/10 · {metadata.get('fundamental_signal', '')}"))
     if "risk_score" in metadata:
         items.append(("Risk", f"{metadata['risk_score']:.1f}/10 · {metadata.get('risk_level', '')}"))
+    if "data_uncertainty_score" in metadata:
+        items.append((
+            "Data uncertainty",
+            f"{metadata['data_uncertainty_score']:.1f}/10 · {metadata.get('data_uncertainty_level', '')}",
+        ))
     if "recommendation" in metadata:
         items.append(("Decision", f"{metadata['recommendation']} · {metadata.get('confidence', 0):.0%}"))
     if not items:
@@ -170,6 +175,27 @@ def render_agent_trace(response: AssistantResponse) -> None:
                     f"{message['sender'].title()} → {message['receiver'].title()} · "
                     f"{message['type']} · {message['task']}"
                 )
+        evaluation = response.metadata.get("agent_evaluation")
+        if evaluation:
+            st.markdown("##### Agent contract evaluation")
+            st.caption(
+                f"Overall {evaluation['overall_score']:.0%} · "
+                f"contracts {evaluation['contract_coverage']:.0%} · "
+                f"outputs {evaluation['output_coverage']:.0%} · "
+                f"evidence {evaluation['evidence_coverage']:.0%}"
+            )
+            reports = response.metadata.get("agent_reports", [])
+            if reports:
+                st.dataframe(pd.DataFrame([
+                    {
+                        "Agent": item["agent"],
+                        "Stage": item["stage"],
+                        "Status": item["status"],
+                        "Confidence": item["confidence"],
+                        "Evidence": item["evidence_count"],
+                    }
+                    for item in reports
+                ]), hide_index=True, use_container_width=True)
 
 
 def render_data_freshness(response: AssistantResponse) -> None:
@@ -190,6 +216,16 @@ def render_data_freshness(response: AssistantResponse) -> None:
                     f"**{source_ref.data_kind.value}** · `{source_ref.source_id}`  \n"
                     f"As-of: `{as_of}` · fetched UTC: `{source_ref.fetched_at.isoformat()}` · "
                     f"schema: `{source_ref.schema_version}` · snapshot: `{checksum}`"
+                )
+    citations = response.metadata.get("research_citations", [])
+    if citations:
+        with st.expander("Research citations", expanded=False):
+            for citation in citations:
+                published = citation.get("published_at", "unknown")
+                st.markdown(
+                    f"**[{citation['title']}]({citation['source_url']})** · {citation['publisher']}  \n"
+                    f"Published: `{published}` · retrieval score: `{citation['retrieval_score']:.3f}` · "
+                    f"chunk: `{citation['chunk_id']}`"
                 )
 
 

@@ -151,6 +151,7 @@ class FundamentalAnalysis(BaseModel):
     policy_version: str = "fundamental-v3-quality-weighted"
     feature_contributions: dict[str, float] = Field(default_factory=dict)
     unavailable_metrics: list[str] = Field(default_factory=list)
+    research_context_count: int = Field(default=0, ge=0)
 
 
 class RiskAnalysis(BaseModel):
@@ -163,6 +164,10 @@ class RiskAnalysis(BaseModel):
     sections: list[RiskSection] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0, le=1)
     policy_version: str = "risk-v2"
+    issuer_risk_level: RiskLevel | None = None
+    issuer_risk_score: float | None = Field(default=None, ge=0, le=10)
+    data_uncertainty_level: RiskLevel = RiskLevel.MEDIUM
+    data_uncertainty_score: float = Field(default=5.0, ge=0, le=10)
 
 
 class FinalDecision(BaseModel):
@@ -178,4 +183,5 @@ class FinalDecision(BaseModel):
     evidence: list[str]
     policy_version: str = "synthesis-v2"
     calibration_status: str = "UNCALIBRATED_NOT_PREDICTIVE"
+    evidence_completeness: float = Field(default=0.0, ge=0, le=1)
     disclaimer: str = "Educational analysis only — not financial advice or a trade order."

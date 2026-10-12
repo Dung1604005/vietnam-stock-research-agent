@@ -13,10 +13,12 @@ from stock_multi_agent.models.analysis import (
     RiskAnalysis,
     TechnicalAnalysis,
 )
+from stock_multi_agent.models.agent_contracts import AgentExecutionReport
 from stock_multi_agent.models.data import PortfolioPosition
 from stock_multi_agent.models.forecast import PriceForecast
 from stock_multi_agent.models.messages import AgentMessage, AgentName
 from stock_multi_agent.models.llm import AgentLLMReview
+from stock_multi_agent.models.research import Citation
 
 
 class TraceEvent(BaseModel):
@@ -39,12 +41,14 @@ class AgentState(BaseModel):
     market_data: MarketData | None = None
     benchmark_data: MarketData | None = None
     price_forecast: PriceForecast | None = None
+    research_evidence: list[Citation] = Field(default_factory=list)
     portfolio_positions: list[PortfolioPosition] = Field(default_factory=list)
     technical_result: TechnicalAnalysis | None = None
     fundamental_result: FundamentalAnalysis | None = None
     risk_result: RiskAnalysis | None = None
     messages: Annotated[list[AgentMessage], operator.add] = Field(default_factory=list)
     llm_reviews: Annotated[list[AgentLLMReview], operator.add] = Field(default_factory=list)
+    agent_reports: Annotated[list[AgentExecutionReport], operator.add] = Field(default_factory=list)
     trace: Annotated[list[TraceEvent], operator.add] = Field(default_factory=list)
     current_plan: list[str] = Field(default_factory=list)
     completed_tasks: Annotated[list[str], operator.add] = Field(default_factory=list)

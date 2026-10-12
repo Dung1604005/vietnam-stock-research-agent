@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 class AgentName(str, Enum):
     MANAGER = "manager"
     DATA = "data"
+    RESEARCH = "research"
     TECHNICAL = "technical"
     FUNDAMENTAL = "fundamental"
     RISK = "risk"

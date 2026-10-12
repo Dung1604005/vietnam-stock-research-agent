@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 import re
 
-from stock_multi_agent.agents import DataAgent, FundamentalAgent, ManagerAgent, RiskAgent, TechnicalAgent
+from stock_multi_agent.agents import DataAgent, FundamentalAgent, ManagerAgent, ResearchAgent, RiskAgent, TechnicalAgent
 from stock_multi_agent.graph.stock_agent_graph import StockAgentGraph
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.models.data import PortfolioPosition
 from stock_multi_agent.providers.market_provider import MarketDataProvider, VnstockMarketDataProvider
 from stock_multi_agent.services.price_forecast import PriceForecastService
 from stock_multi_agent.services.agent_llm import AgentLLMAdvisor
+from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.tools import FinancialToolkit, MarketDataTool, TechnicalIndicatorToolkit
 
 
@@ -21,19 +22,22 @@ class AnalysisService:
         provider: MarketDataProvider | None = None,
         price_forecast_service: PriceForecastService | None = None,
         llm_advisor: AgentLLMAdvisor | None = None,
+        research_store: ResearchStore | None = None,
     ) -> None:
         source = os.getenv("VNSTOCK_SOURCE", "VCI")
         market_provider = provider or VnstockMarketDataProvider(source=source)
         technical_tools = TechnicalIndicatorToolkit()
         advisor = llm_advisor or AgentLLMAdvisor()
-        self.data_agent = DataAgent(MarketDataTool(market_provider), llm_advisor=advisor)
+        self.data_agent = DataAgent(MarketDataTool(market_provider))
+        self.research_agent = ResearchAgent(research_store)
         self.technical_agent = TechnicalAgent(technical_tools, llm_advisor=advisor)
-        self.fundamental_agent = FundamentalAgent(FinancialToolkit(), llm_advisor=advisor)
-        self.risk_agent = RiskAgent(technical_tools, llm_advisor=advisor)
-        self.manager_agent = ManagerAgent(llm_advisor=advisor)
+        self.fundamental_agent = FundamentalAgent(FinancialToolkit())
+        self.risk_agent = RiskAgent(technical_tools)
+        self.manager_agent = ManagerAgent()
         self.price_forecast_service = price_forecast_service or PriceForecastService()
         self.graph = StockAgentGraph(
             data_agent=self.data_agent,
+            research_agent=self.research_agent,
             technical_agent=self.technical_agent,
             fundamental_agent=self.fundamental_agent,
             risk_agent=self.risk_agent,
@@ -95,10 +99,12 @@ class AnalysisService:
 
     def analyze_fundamental(self, ticker: str, investment_horizon: str = "3 months") -> AgentState:
         state = self.fetch_data(ticker, investment_horizon, include_financials=True)
+        state = self._merge(state, self.research_agent.run(state))
         return self._merge(state, self.fundamental_agent.run(state))
 
     def analyze_risk(self, ticker: str, investment_horizon: str = "3 months") -> AgentState:
         state = self.fetch_data(ticker, investment_horizon, include_financials=True, include_benchmark=True)
+        state = self._merge(state, self.research_agent.run(state))
         state = self._merge(state, self.technical_agent.run(state))
         state = self._merge(state, self.fundamental_agent.run(state))
         return self._merge(state, self.risk_agent.run(state))
@@ -131,7 +137,7 @@ class AnalysisService:
     def _merge(state: AgentState, update: dict[str, object]) -> AgentState:
         values = state.model_dump()
         for key, value in update.items():
-            if key in {"messages", "trace", "completed_tasks", "llm_reviews"}:
+            if key in {"messages", "trace", "completed_tasks", "llm_reviews", "agent_reports"}:
                 values[key] = [*values.get(key, []), *value]  # type: ignore[arg-type]
             else:
                 values[key] = value
