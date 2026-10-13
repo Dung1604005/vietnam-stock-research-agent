@@ -14,6 +14,7 @@ from stock_multi_agent.models.analysis import (
     TechnicalAnalysis,
 )
 from stock_multi_agent.models.agent_contracts import AgentExecutionReport
+from stock_multi_agent.models.conflicts import ConflictRecord, ReanalysisAction
 from stock_multi_agent.models.data import PortfolioPosition
 from stock_multi_agent.models.forecast import PriceForecast
 from stock_multi_agent.models.messages import AgentMessage, AgentName
@@ -53,7 +54,11 @@ class AgentState(BaseModel):
     current_plan: list[str] = Field(default_factory=list)
     completed_tasks: Annotated[list[str], operator.add] = Field(default_factory=list)
     iteration: int = Field(default=0, ge=0)
-    max_iterations: int = Field(default=3, ge=0, le=10)
+    max_iterations: int = Field(default=2, ge=0, le=10)
     conflict_detected: bool = False
     reanalysis_requested: bool = False
+    active_conflicts: list[ConflictRecord] = Field(default_factory=list)
+    reanalysis_action: ReanalysisAction = ReanalysisAction.NONE
+    reanalysis_history: Annotated[list[ReanalysisAction], operator.add] = Field(default_factory=list)
+    reanalysis_evidence_fingerprint: str | None = None
     final_decision: FinalDecision | None = None

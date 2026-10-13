@@ -54,7 +54,7 @@ class AnalysisService:
         self,
         ticker: str,
         investment_horizon: str = "3 months",
-        max_iterations: int = 3,
+        max_iterations: int = 2,
         portfolio_positions: list[PortfolioPosition] | None = None,
     ) -> AgentState:
         symbol = self._validate_ticker(ticker)
@@ -125,7 +125,7 @@ class AnalysisService:
         self,
         symbol: str,
         investment_horizon: str,
-        max_iterations: int = 3,
+        max_iterations: int = 2,
         required_data: list[str] | None = None,
         portfolio_positions: list[PortfolioPosition] | None = None,
     ) -> AgentState:

@@ -3,6 +3,7 @@ from stock_multi_agent.agents.manager_agent import ManagerAgent
 from stock_multi_agent.agents.risk_agent import RiskAgent
 from stock_multi_agent.agents.technical_agent import TechnicalAgent
 from stock_multi_agent.models.analysis import FundamentalAnalysis, RiskAnalysis, RiskLevel, Signal, TechnicalAnalysis
+from stock_multi_agent.models.conflicts import ReanalysisAction
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.tools.financial_data import FinancialToolkit
 from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolkit
@@ -68,22 +69,63 @@ def test_missing_fundamental_evidence_is_uncertainty_not_automatic_high_risk(mar
     assert result.veto is False
     assert result.policy_version == "risk-v4-decomposed"
     state.risk_result = result
-    assert ManagerAgent().review(state)["reanalysis_requested"] is False
+    update = ManagerAgent().review(state)
+    assert update["reanalysis_requested"] is True
+    assert update["reanalysis_action"] is ReanalysisAction.RESEARCH_FUNDAMENTAL
 
 
 def test_manager_detects_conflict_and_routes_reanalysis(market_data) -> None:
     state = _state_with_results(market_data)
     state.risk_result = RiskAnalysis(
-        risk_level=RiskLevel.HIGH, risk_score=9, criticisms=[], warnings=[], veto=True,
+        risk_level=RiskLevel.HIGH, risk_score=7.8, criticisms=[], warnings=[], veto=False,
         reasoning_summary="High volatility and disagreement",
     )
     manager = ManagerAgent()
     conflicts = manager.conflicts(state)
-    assert len(conflicts) >= 3
+    assert len(conflicts) >= 2
     update = manager.review(state)
     merged = state.model_copy(update=update)
     assert merged.iteration == 1
-    assert manager.route_after_review(merged) == "reanalyze"
+    assert manager.route_after_review(merged) == "research_fundamental"
+
+
+def test_risk_veto_stops_reanalysis_without_recoverable_data_issue(market_data) -> None:
+    state = _state_with_results(market_data)
+    state.risk_result = RiskAnalysis(
+        risk_level=RiskLevel.HIGH, risk_score=9, criticisms=[], warnings=[], veto=True,
+        reasoning_summary="Severe issuer risk",
+    )
+    update = ManagerAgent().review(state)
+    assert update["reanalysis_requested"] is False
+    assert update["reanalysis_action"] is ReanalysisAction.NONE
+
+
+def test_manager_routes_lower_confidence_technical_conflict_to_technical(market_data) -> None:
+    state = _state_with_results(market_data)
+    state.technical_result = state.technical_result.model_copy(update={"confidence": 0.4})
+    state.fundamental_result = state.fundamental_result.model_copy(update={"confidence": 0.8})
+    state.risk_result = RiskAnalysis(
+        risk_level=RiskLevel.MEDIUM, risk_score=4, criticisms=[], warnings=[], veto=False,
+        reasoning_summary="Moderate risk",
+    )
+    update = ManagerAgent().review(state)
+    assert update["reanalysis_action"] is ReanalysisAction.TECHNICAL
+
+
+def test_manager_stops_when_reanalysis_did_not_change_evidence(market_data) -> None:
+    state = _state_with_results(market_data)
+    state.risk_result = RiskAnalysis(
+        risk_level=RiskLevel.MEDIUM, risk_score=4, criticisms=[], warnings=[], veto=False,
+        reasoning_summary="Moderate risk",
+    )
+    manager = ManagerAgent()
+    first = manager.review(state)
+    state.iteration = first["iteration"]
+    state.reanalysis_history = first["reanalysis_history"]
+    state.reanalysis_evidence_fingerprint = first["reanalysis_evidence_fingerprint"]
+    second = manager.review(state)
+    assert second["reanalysis_requested"] is False
+    assert second["reanalysis_action"] is ReanalysisAction.NONE
 
 
 def test_max_iterations_protects_route(market_data) -> None:

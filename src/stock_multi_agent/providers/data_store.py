@@ -14,6 +14,7 @@ from stock_multi_agent.models.analysis import MarketData
 class MarketDataCache(Protocol):
     def get(self, key: str) -> MarketData | None: ...
     def set(self, key: str, data: MarketData, ttl_seconds: int) -> None: ...
+    def delete(self, key: str) -> None: ...
 
 
 class SQLiteMarketDataCache:
@@ -63,6 +64,10 @@ class SQLiteMarketDataCache:
                 "INSERT OR REPLACE INTO market_cache(cache_key, payload, created_at, expires_at) VALUES (?, ?, ?, ?)",
                 (key, data.model_dump_json(), created_at.isoformat(), expires_at.isoformat()),
             )
+
+    def delete(self, key: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM market_cache WHERE cache_key = ?", (key,))
 
 
 class RawSnapshotStore:

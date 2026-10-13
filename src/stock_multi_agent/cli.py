@@ -12,7 +12,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Five-agent Vietnamese stock analysis demo")
     parser.add_argument("ticker", help="Vietnamese stock ticker, e.g. FPT")
     parser.add_argument("--horizon", default="3 months")
-    parser.add_argument("--max-iterations", type=int, default=3)
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=2,
+        help="Maximum evidence-producing re-analysis rounds (default: 2)",
+    )
     args = parser.parse_args()
     state = AnalysisService().analyze(args.ticker, args.horizon, args.max_iterations)
     if state.final_decision is None:

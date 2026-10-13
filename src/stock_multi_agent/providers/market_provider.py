@@ -272,6 +272,13 @@ class VnstockMarketDataProvider:
         self.last_error = None
         return data
 
+    def refresh_market_data(self, ticker: str, include_financials: bool = True) -> MarketData:
+        """Bypass only this instrument's cache before one bounded recovery attempt."""
+        symbol = ticker.strip().upper()
+        if self.cache is not None:
+            self.cache.delete(self._cache_key(symbol, include_financials))
+        return self.get_market_data(symbol, include_financials=include_financials)
+
     def health(self) -> dict[str, Any]:
         """In-process operational state for probes, CLI reporting and tests.
 

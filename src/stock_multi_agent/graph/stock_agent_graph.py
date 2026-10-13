@@ -42,7 +42,16 @@ class StockAgentGraph:
         graph.add_node("risk", self.risk_agent.run)
         graph.add_node("manager_review", self.manager_agent.review)
         graph.add_node("technical_reanalysis", lambda state: self.technical_agent.run(state, extended=True))
-        graph.add_node("risk_reanalysis", self.risk_agent.run)
+        graph.add_node("risk_after_technical", self.risk_agent.run)
+        graph.add_node("research_reanalysis", lambda state: self.research_agent.run(state, expanded=True))
+        graph.add_node("fundamental_after_research", self.fundamental_agent.run)
+        graph.add_node("risk_after_research", self.risk_agent.run)
+        graph.add_node("data_reanalysis", lambda state: self.data_agent.run(state, refresh=True))
+        graph.add_node("forecast_reanalysis", self._forecast)
+        graph.add_node("research_after_data", lambda state: self.research_agent.run(state, expanded=True))
+        graph.add_node("technical_after_data", lambda state: self.technical_agent.run(state, extended=True))
+        graph.add_node("fundamental_after_data", self.fundamental_agent.run)
+        graph.add_node("risk_after_data", self.risk_agent.run)
         graph.add_node("finalize", self.manager_agent.finalize)
 
         graph.add_edge(START, "manager_plan")
@@ -58,10 +67,24 @@ class StockAgentGraph:
         graph.add_conditional_edges(
             "manager_review",
             self.manager_agent.route_after_review,
-            {"reanalyze": "technical_reanalysis", "finalize": "finalize"},
+            {
+                "technical": "technical_reanalysis",
+                "research_fundamental": "research_reanalysis",
+                "data_pipeline": "data_reanalysis",
+                "finalize": "finalize",
+            },
         )
-        graph.add_edge("technical_reanalysis", "risk_reanalysis")
-        graph.add_edge("risk_reanalysis", "manager_review")
+        graph.add_edge("technical_reanalysis", "risk_after_technical")
+        graph.add_edge("risk_after_technical", "manager_review")
+        graph.add_edge("research_reanalysis", "fundamental_after_research")
+        graph.add_edge("fundamental_after_research", "risk_after_research")
+        graph.add_edge("risk_after_research", "manager_review")
+        graph.add_edge("data_reanalysis", "forecast_reanalysis")
+        graph.add_edge("forecast_reanalysis", "research_after_data")
+        graph.add_edge("research_after_data", "technical_after_data")
+        graph.add_edge("research_after_data", "fundamental_after_data")
+        graph.add_edge(["technical_after_data", "fundamental_after_data"], "risk_after_data")
+        graph.add_edge("risk_after_data", "manager_review")
         graph.add_edge("finalize", END)
         return graph
 

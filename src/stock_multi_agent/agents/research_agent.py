@@ -30,9 +30,9 @@ class ResearchAgent(BaseAgent):
     def __init__(self, store: ResearchStore | None = None) -> None:
         self.store = store or ResearchStore()
 
-    def run(self, state: AgentState) -> dict[str, object]:
+    def run(self, state: AgentState, expanded: bool = False) -> dict[str, object]:
         context = ResearchAgentContext.from_state(state)
-        queries = self._queries(context)
+        queries = self._queries(context, expanded=expanded)
         bundles: list[EvidenceBundle] = []
         traces = [self.event("PLAN", "CREATE_RETRIEVAL_PLAN", f"Prepared {len(queries)} bounded research queries")]
         for query in queries:
@@ -42,7 +42,7 @@ class ResearchAgent(BaseAgent):
                 "ACT", "CALL_TOOL", f"Retrieved {len(bundle.citations)} citation(s) for: {query}",
                 "hybrid_vector_fts_retrieval",
             ))
-            if len(bundle.citations) >= 3:
+            if len(bundle.citations) >= (4 if expanded else 3):
                 break
 
         citations = []
@@ -53,7 +53,7 @@ class ResearchAgent(BaseAgent):
                     seen_chunks.add(citation.chunk_id)
                     citations.append(citation)
         citations.sort(key=lambda item: item.retrieval_score, reverse=True)
-        citations = citations[:4]
+        citations = citations[:8 if expanded else 4]
         citation_ids = [citation.chunk_id for citation in citations]
         status = "COMPLETED" if citations else "PARTIAL"
         summary = (
@@ -80,9 +80,9 @@ class ResearchAgent(BaseAgent):
             "research_evidence": citations,
             "messages": messages,
             "trace": traces,
-            "completed_tasks": ["research_retrieval"],
+            "completed_tasks": ["research_reanalysis" if expanded else "research_retrieval"],
             "agent_reports": [self.report(
-                stage="research_retrieval",
+                stage="research_reanalysis" if expanded else "research_retrieval",
                 status=status,
                 summary=summary,
                 confidence=max((item.retrieval_score for item in citations), default=0.0),
@@ -94,8 +94,15 @@ class ResearchAgent(BaseAgent):
         }
 
     @staticmethod
-    def _queries(context: ResearchAgentContext) -> list[str]:
-        return [
+    def _queries(context: ResearchAgentContext, expanded: bool = False) -> list[str]:
+        queries = [
             f"{context.ticker} kết quả kinh doanh định giá dòng tiền rủi ro",
             f"{context.ticker} triển vọng doanh nghiệp trong {context.investment_horizon}",
         ]
+        if expanded:
+            queries.extend([
+                f"{context.ticker} annual report financial statements revenue profit debt",
+                f"{context.ticker} official disclosure business outlook valuation",
+                f"{context.ticker} business liquidity dilution governance risks",
+            ])
+        return queries

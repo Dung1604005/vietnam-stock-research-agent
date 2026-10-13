@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 from typing import Any
@@ -10,6 +12,7 @@ from stock_multi_agent.agents.base_agent import BaseAgent
 from stock_multi_agent.models.agent_contracts import AgentSpec, ManagerContext
 from stock_multi_agent.models.analysis import Recommendation, RiskLevel, Signal, FinalDecision
 from stock_multi_agent.models.chat import AssistantResponse, ParsedQuery, QueryIntent, ResponseType
+from stock_multi_agent.models.conflicts import ConflictKind, ConflictRecord, ReanalysisAction
 from stock_multi_agent.models.messages import AgentMessage, AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.providers.llm_provider import SemanticLLMProvider, configured_semantic_provider
@@ -262,70 +265,208 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
         }
 
     @staticmethod
-    def conflicts(state: AgentState) -> list[str]:
+    def assess_conflicts(state: AgentState) -> list[ConflictRecord]:
         if state.technical_result is None or state.fundamental_result is None or state.risk_result is None:
-            return ["Required specialist result is missing"]
-        conflicts: list[str] = []
+            return [ConflictRecord(
+                kind=ConflictKind.MISSING_SPECIALIST_RESULT,
+                detail="Required specialist result is missing",
+            )]
+        conflicts: list[ConflictRecord] = []
         if (
             state.technical_result.signal != state.fundamental_result.signal
             and Signal.UNKNOWN not in (state.technical_result.signal, state.fundamental_result.signal)
         ):
-            conflicts.append(
-                f"Technical {state.technical_result.signal.value} vs Fundamental {state.fundamental_result.signal.value}"
+            action = (
+                ReanalysisAction.RESEARCH_FUNDAMENTAL
+                if state.fundamental_result.confidence <= state.technical_result.confidence
+                else ReanalysisAction.TECHNICAL
             )
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.SPECIALIST_DISAGREEMENT,
+                detail=f"Technical {state.technical_result.signal.value} vs Fundamental {state.fundamental_result.signal.value}",
+                suggested_action=action,
+            ))
         if state.technical_result.signal is Signal.UNKNOWN:
-            conflicts.append("Technical evidence is insufficient")
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.TECHNICAL_EVIDENCE_INSUFFICIENT,
+                detail="Technical evidence is insufficient",
+                suggested_action=ReanalysisAction.TECHNICAL,
+            ))
         if state.fundamental_result.signal is Signal.UNKNOWN:
-            conflicts.append("Fundamental evidence is insufficient")
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.FUNDAMENTAL_EVIDENCE_INSUFFICIENT,
+                detail="Fundamental evidence is insufficient",
+                suggested_action=ReanalysisAction.RESEARCH_FUNDAMENTAL,
+            ))
         if state.risk_result.risk_level == RiskLevel.HIGH:
-            conflicts.append("Risk Agent rates the evidence HIGH risk")
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.HIGH_MEASURED_RISK,
+                detail="Risk Agent rates the evidence HIGH risk",
+                suggested_action=ReanalysisAction.TECHNICAL,
+            ))
         if state.risk_result.data_uncertainty_level == RiskLevel.HIGH:
-            conflicts.append("Data uncertainty is HIGH")
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.HIGH_DATA_UNCERTAINTY,
+                detail="Data uncertainty is HIGH",
+                suggested_action=ReanalysisAction.DATA_PIPELINE,
+            ))
         if state.risk_result.veto:
-            conflicts.append("Risk Agent issued a veto")
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.RISK_VETO,
+                detail="Risk Agent issued a veto",
+            ))
         if min(state.technical_result.confidence, state.fundamental_result.confidence) < 0.5:
-            conflicts.append("Specialist confidence is low")
+            action = (
+                ReanalysisAction.TECHNICAL
+                if state.technical_result.confidence < state.fundamental_result.confidence
+                else ReanalysisAction.RESEARCH_FUNDAMENTAL
+            )
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.LOW_SPECIALIST_CONFIDENCE,
+                detail="Specialist confidence is low",
+                suggested_action=action,
+            ))
+        recoverable_market_codes = {
+            "STALE_PRICE", "PRICE_GAPS", "INSUFFICIENT_HISTORY", "INVALID_CHRONOLOGY",
+            "FUTURE_AS_OF", "MISSING_SOURCE_REF", "LOW_VOLUME_COVERAGE",
+        }
+        recoverable_financial_codes = {
+            "INSUFFICIENT_FINANCIALS", "MISSING_FINANCIAL_PERIOD",
+            "STALE_FINANCIALS", "STALE_FINANCIAL_RATIOS",
+        }
+        quality_codes = {item.code for item in state.market_data.quality_report.issues} if state.market_data else set()
+        relevant_codes = quality_codes & recoverable_market_codes
+        if (
+            state.fundamental_result.signal is Signal.UNKNOWN
+            or state.fundamental_result.confidence < 0.5
+        ):
+            relevant_codes |= quality_codes & recoverable_financial_codes
+        if relevant_codes:
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.DATA_QUALITY_LIMITATION,
+                detail=f"Recoverable data-quality limitations: {', '.join(sorted(relevant_codes))}",
+                suggested_action=ReanalysisAction.DATA_PIPELINE,
+            ))
         return conflicts
 
-    def review(self, state: AgentState) -> dict[str, object]:
-        conflicts = self.conflicts(state)
-        already_extended = bool(state.technical_result and state.technical_result.timeframe.startswith("extended"))
-        can_retry = state.iteration < state.max_iterations and not already_extended
-        technical_recheck_needed = bool(
-            state.technical_result
-            and state.fundamental_result
-            and (
-                state.technical_result.signal is Signal.UNKNOWN
-                or (
-                    state.technical_result.signal != state.fundamental_result.signal
-                    and state.fundamental_result.signal is not Signal.UNKNOWN
-                )
-                or (state.risk_result is not None and state.risk_result.risk_level is RiskLevel.HIGH)
-            )
+    @classmethod
+    def conflicts(cls, state: AgentState) -> list[str]:
+        """Backward-compatible human-readable conflict list used by final synthesis."""
+        return [item.detail for item in cls.assess_conflicts(state)]
+
+    @staticmethod
+    def _evidence_fingerprint(state: AgentState) -> str:
+        market = state.market_data
+        payload = {
+            "market": None if market is None else {
+                "as_of": market.as_of.isoformat() if market.as_of else None,
+                "bars": len(market.bars),
+                "last_bar": market.bars[-1].model_dump(mode="json") if market.bars else None,
+                "financials": market.financials.model_dump(mode="json"),
+                "financial_periods": sorted(
+                    item.period_end.isoformat()
+                    for item in [*market.financial_observations, *market.financial_statement_observations]
+                    if item.period_end is not None
+                ),
+                "source_ids": sorted(item.source_id for item in market.source_refs),
+                "quality_codes": sorted(item.code for item in market.quality_report.issues),
+            },
+            "research_chunks": sorted(item.chunk_id for item in state.research_evidence),
+            "technical": state.technical_result.model_dump(mode="json") if state.technical_result else None,
+            "fundamental": state.fundamental_result.model_dump(mode="json") if state.fundamental_result else None,
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _select_reanalysis_action(
+        conflicts: list[ConflictRecord],
+        history: list[ReanalysisAction],
+    ) -> ReanalysisAction:
+        attempted = set(history)
+        if ReanalysisAction.DATA_PIPELINE in attempted:
+            attempted.update({
+                ReanalysisAction.RESEARCH_FUNDAMENTAL,
+                ReanalysisAction.TECHNICAL,
+            })
+        if (
+            any(item.kind is ConflictKind.RISK_VETO for item in conflicts)
+            and not any(item.suggested_action is ReanalysisAction.DATA_PIPELINE for item in conflicts)
+        ):
+            return ReanalysisAction.NONE
+        priorities = (
+            ReanalysisAction.DATA_PIPELINE,
+            ReanalysisAction.RESEARCH_FUNDAMENTAL,
+            ReanalysisAction.TECHNICAL,
         )
-        request = bool(conflicts) and can_retry and technical_recheck_needed
+        suggested = {item.suggested_action for item in conflicts}
+        for action in priorities:
+            if action in suggested and action not in attempted:
+                return action
+        return ReanalysisAction.NONE
+
+    def review(self, state: AgentState) -> dict[str, object]:
+        conflict_records = self.assess_conflicts(state)
+        conflicts = [item.detail for item in conflict_records]
+        current_fingerprint = self._evidence_fingerprint(state)
+        previous_attempt_changed_evidence = not (
+            state.reanalysis_history
+            and state.reanalysis_evidence_fingerprint == current_fingerprint
+        )
+        can_retry = state.iteration < state.max_iterations and previous_attempt_changed_evidence
+        action = (
+            self._select_reanalysis_action(conflict_records, state.reanalysis_history)
+            if conflicts and can_retry
+            else ReanalysisAction.NONE
+        )
+        request = action is not ReanalysisAction.NONE
         messages: list[AgentMessage] = []
         trace = [self.event("OBSERVE", "DETECT_CONFLICT", "; ".join(conflicts) if conflicts else "No material conflict")]
         iteration = state.iteration
         plan = state.current_plan
         if request:
             iteration += 1
-            plan = [*state.current_plan, "Re-check long-term trend, SMA200, support/resistance, and drawdown"]
+            task_by_action = {
+                ReanalysisAction.DATA_PIPELINE: "Refresh market and financial evidence, then rerun affected specialists",
+                ReanalysisAction.RESEARCH_FUNDAMENTAL: "Expand cited research and reassess fundamentals",
+                ReanalysisAction.TECHNICAL: "Re-check long-term trend, SMA200, support/resistance, and drawdown",
+            }
+            recipient_by_action = {
+                ReanalysisAction.DATA_PIPELINE: AgentName.DATA,
+                ReanalysisAction.RESEARCH_FUNDAMENTAL: AgentName.RESEARCH,
+                ReanalysisAction.TECHNICAL: AgentName.TECHNICAL,
+            }
+            task = task_by_action[action]
+            plan = [*state.current_plan, task]
             messages.append(self.message(
-                AgentName.TECHNICAL,
+                recipient_by_action[action],
                 MessageType.REQUEST_REANALYSIS,
-                "Re-analyze using an extended one-year context",
-                {"conflicts": conflicts, "iteration": iteration, "max_iterations": state.max_iterations},
+                task,
+                {
+                    "conflicts": conflicts,
+                    "action": action.value,
+                    "iteration": iteration,
+                    "max_iterations": state.max_iterations,
+                },
             ))
             trace.extend([
-                self.event("PLAN", "REVISE_PLAN", "Conflict warrants extended technical evidence"),
-                self.event("ACT", "REQUEST_REANALYSIS", f"Iteration {iteration}/{state.max_iterations}"),
+                self.event("PLAN", "REVISE_PLAN", f"Conflict classified; selected {action.value}"),
+                self.event("ACT", "REQUEST_REANALYSIS", f"{action.value} iteration {iteration}/{state.max_iterations}"),
             ])
-        elif conflicts and not can_retry:
-            trace.append(self.event("PLAN", "STOP_LOOP", "Use conservative synthesis; re-analysis exhausted or already extended"))
+        elif conflicts:
+            reason = (
+                "Evidence did not change after the previous re-analysis"
+                if not previous_attempt_changed_evidence
+                else "Re-analysis budget exhausted or no untried evidence-producing action remains"
+            )
+            trace.append(self.event("PLAN", "STOP_LOOP", f"{reason}; use conservative synthesis"))
         return {
             "conflict_detected": bool(conflicts),
             "reanalysis_requested": request,
+            "active_conflicts": conflict_records,
+            "reanalysis_action": action,
+            "reanalysis_history": [action] if request else [],
+            "reanalysis_evidence_fingerprint": current_fingerprint if request else state.reanalysis_evidence_fingerprint,
             "iteration": iteration,
             "current_plan": plan,
             "messages": messages,
@@ -334,7 +475,13 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
 
     @staticmethod
     def route_after_review(state: AgentState) -> str:
-        return "reanalyze" if state.reanalysis_requested and state.iteration <= state.max_iterations else "finalize"
+        if not state.reanalysis_requested or state.iteration > state.max_iterations:
+            return "finalize"
+        return {
+            ReanalysisAction.TECHNICAL: "technical",
+            ReanalysisAction.RESEARCH_FUNDAMENTAL: "research_fundamental",
+            ReanalysisAction.DATA_PIPELINE: "data_pipeline",
+        }.get(state.reanalysis_action, "finalize")
 
     def finalize(self, state: AgentState) -> dict[str, object]:
         if state.technical_result is None or state.fundamental_result is None or state.risk_result is None:
