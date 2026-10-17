@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from stock_multi_agent.chat.query_parser import QueryParser
 from stock_multi_agent.chat.response import ResponseComposer
@@ -20,6 +21,7 @@ from stock_multi_agent.models.chat import (
 )
 from stock_multi_agent.models.messages import AgentName
 from stock_multi_agent.models.analysis import Signal
+from stock_multi_agent.models.data import SourceReference
 from stock_multi_agent.models.screening import ComparisonSpec, RankingDirection, ScreenSpec, ScreenStatus
 from stock_multi_agent.models.state import AgentState, TraceEvent
 from stock_multi_agent.providers.market_provider import MarketDataError
@@ -33,7 +35,7 @@ from stock_multi_agent.services.research_orchestrator import ResearchOrchestrato
 from stock_multi_agent.services.recommendation_service import RecommendationService
 from stock_multi_agent.services.screening_service import ScreeningService
 from stock_multi_agent.services.universe_service import UniverseService
-from stock_multi_agent.services.web_research import WebResearchError, WebResearchService
+from stock_multi_agent.services.web_research import WebResearchError, WebResearchService, WebSearchProvider
 from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolkit
 
 
@@ -60,6 +62,7 @@ class ChatService:
         self.research = research_store or ResearchStore()
         self.rag = rag_service or RAGService(self.research)
         self.web_research = web_research or WebResearchService()
+        self._data_source_link_cache: dict[str, list[dict[str, str]]] = {}
         self.research_orchestrator = research_orchestrator or ResearchOrchestrator(discovery=self.web_research)
         self.knowledge = knowledge_service or KnowledgeService()
         self.llm_analyst = llm_analyst or LLMAnalystService()
@@ -88,6 +91,17 @@ class ChatService:
                 confidence=query.confidence,
                 rationale="Giữ route local đã xác định; không cần gửi câu hỏi lý thuyết tới LLM.",
                 fallback_reason="local_only_intent",
+            )
+        elif query.intent is QueryIntent.STOCK_RECOMMENDATION and query.confidence >= 0.90:
+            # A high-confidence typed recommendation intent already has all
+            # information needed by the deterministic router. Reserve the
+            # remote Manager LLM for ambiguous/misclassified requests; the
+            # final Manager synthesis may still run once after analysis.
+            manager_routing = ManagerRouteSelection(
+                selected_intent=query.intent,
+                confidence=query.confidence,
+                rationale="Semantic parser đã xác định rõ yêu cầu chọn cổ phiếu; dùng deterministic route nhanh.",
+                fallback_reason="high_confidence_typed_route",
             )
         else:
             manager_routing = self.analysis.manager_agent.choose_chat_intent(query)
@@ -150,6 +164,8 @@ class ChatService:
                 )
             response.message += "\n".join(section)
 
+        self._attach_data_source_citations(response)
+
         if plan.steps:
             response.metadata["routing_plan"] = [step.value for step in plan.steps]
             response.metadata["parsed_intent"] = query.intent.value
@@ -182,6 +198,123 @@ class ChatService:
         response.metadata["manager_synthesis"] = manager_synthesis.model_dump(mode="json")
         self._update_conversation(conversation, user_message, query, plan.intent, response)
         return response
+
+    def _attach_data_source_citations(self, response: AssistantResponse) -> None:
+        """Render exact provenance and use Brave only to discover missing links.
+
+        A discovered page is deliberately labelled as a fallback link instead
+        of being written into ``SourceReference.source_url``. This preserves
+        the distinction between the endpoint that produced a datum and a page
+        found later by search.
+        """
+        if response.response_type not in {ResponseType.ANALYSIS, ResponseType.COMPARISON}:
+            return
+        if not response.source_details:
+            return
+
+        direct_lines: list[str] = []
+        missing_refs = []
+        for ref in response.source_details:
+            as_of = ref.as_of.isoformat() if ref.as_of else "không được nguồn cung cấp"
+            fetched = ref.fetched_at.isoformat()
+            label = f"{ref.provider} · {ref.data_kind.value} · `{ref.source_id}`"
+            if ref.source_url:
+                direct_lines.append(
+                    f"- [{label}]({ref.source_url}) — dữ liệu đến `{as_of}`, truy xuất `{fetched}`"
+                )
+            else:
+                direct_lines.append(
+                    f"- {label} — dữ liệu đến `{as_of}`, truy xuất `{fetched}`; nguồn không trả URL trực tiếp"
+                )
+                missing_refs.append(ref)
+
+        fallback_links = self._discover_missing_data_source_links(response, missing_refs)
+        response.metadata["data_source_citations"] = {
+            "exact_source_count": sum(1 for ref in response.source_details if ref.source_url),
+            "missing_source_url_count": len(missing_refs),
+            "brave_discovered_links": fallback_links,
+        }
+
+        sections = ["\n\n#### Nguồn dữ liệu", *direct_lines]
+        if fallback_links:
+            sections.append(
+                "\n**Liên kết tham khảo tìm bằng Brave** "
+                "(dùng để kiểm tra thêm, không được coi là endpoint đã sinh ra dữ liệu):"
+            )
+            sections.extend(
+                f"- [{item['title']}]({item['source_url']}) — `{item['search_provider']}`, "
+                f"tìm lúc `{item['retrieved_at']}`"
+                for item in fallback_links
+            )
+        elif missing_refs:
+            sections.append(
+                "\nKhông tìm được liên kết Brave đủ điều kiện; hệ thống giữ nguyên source_id và timestamp, không tự tạo URL."
+            )
+
+        research_citations = response.metadata.get("research_citations", [])
+        if research_citations:
+            sections.append("\n**Tài liệu nghiên cứu được dùng:**")
+            for citation in research_citations[:5]:
+                sections.append(
+                    f"- [{citation['title']}]({citation['source_url']}) — "
+                    f"{citation['publisher']} · công bố `{citation.get('published_at') or 'không rõ'}`"
+                )
+        response.message += "\n".join(sections)
+
+    def _discover_missing_data_source_links(
+        self,
+        response: AssistantResponse,
+        missing_refs: list[SourceReference],
+    ) -> list[dict[str, str]]:
+        if not missing_refs or not response.tickers:
+            return []
+        brave = self._configured_brave_provider()
+        if brave is None:
+            return []
+
+        tickers = sorted(set(response.tickers[:4]))
+        kinds = sorted({ref.data_kind.value for ref in missing_refs})
+        cache_key = "|".join([*tickers, *kinds])
+        if cache_key in self._data_source_link_cache:
+            return self._data_source_link_cache[cache_key]
+
+        query = (
+            f"{' '.join(tickers)} Vietnam stock official data source "
+            f"{' '.join(kinds)} historical price financial statements"
+        )
+        try:
+            results = brave.search(query, 3)
+        except WebResearchError:
+            self._data_source_link_cache[cache_key] = []
+            return []
+
+        retrieved_at = datetime.now(timezone.utc).isoformat()
+        links: list[dict[str, str]] = []
+        ticker_tokens = {ticker.casefold() for ticker in tickers}
+        for result in results:
+            parsed = urlparse(result.source_url)
+            haystack = f"{result.title} {result.snippet} {result.source_url}".casefold()
+            if parsed.scheme != "https" or not parsed.netloc:
+                continue
+            if not any(ticker in haystack for ticker in ticker_tokens):
+                continue
+            links.append({
+                "title": result.title,
+                "source_url": result.source_url,
+                "search_provider": result.provider_name or brave.name,
+                "retrieved_at": retrieved_at,
+            })
+        self._data_source_link_cache[cache_key] = links
+        return links
+
+    def _configured_brave_provider(self) -> WebSearchProvider | None:
+        provider = self.web_research.provider
+        if getattr(provider, "name", "") == "brave_search_api":
+            return provider
+        for candidate in getattr(provider, "providers", []):
+            if getattr(candidate, "name", "") == "brave_search_api":
+                return candidate
+        return None
 
     def _dispatch(self, query, resolved_intent: QueryIntent) -> AssistantResponse:
         if resolved_intent == QueryIntent.HELP:
@@ -603,6 +736,7 @@ class ChatService:
             maximum_candidates=candidate_budget,
             eligible_signals=eligible_signals,
             minimum_technical_score=minimum_score,
+            max_price_age_days=3,
             ranking_direction=ranking_direction,
             candidate_selection_policy="progressive_successive_halving_v1",
             factor_policy_version="screen-v3-progressive",
@@ -668,6 +802,8 @@ class ChatService:
                 "matching_candidate_count": len(ranked_candidates),
                 "missing_data_policy": spec.missing_data_policy.value,
                 "price_as_of_aligned": run.price_as_of_aligned,
+                "price_as_of_comparable": run.price_as_of_comparable,
+                "refreshed_tickers": run.refreshed_tickers,
                 "universe_capture": universe.captured_at.isoformat() if universe.captured_at else None,
                 "progressive_rounds": [item.model_dump(mode="json") for item in run.progressive_rounds],
             },
@@ -687,46 +823,64 @@ class ChatService:
             max_quick_screen=100,
         )
 
-        def make_table(title: str, candidates) -> ResponseTable:
+        def make_table(title: str, candidates, *, reference_only: bool = False) -> ResponseTable:
             return ResponseTable(
                 title=title,
                 columns=[
-                    "Ticker", "Rank", "Technical", "Fundamental", "Risk",
-                    "Volatility", "Decision", "Confidence", "As of", "Why",
+                    "Ticker", "Rank", "Tier", "Technical", "Fundamental", "Risk",
+                    "Volatility", "Decision", "As of", "Why",
                 ],
                 rows=[{
                     "Ticker": item.ticker,
                     "Rank": item.rank_in_bucket,
+                    "Tier": item.selection_tier.value,
                     "Technical": f"{item.technical_score:.1f}/10",
                     "Fundamental": f"{item.fundamental_score:.1f}/10",
                     "Risk": f"{item.risk_score:.1f}/10 ({item.risk_level.value})",
                     "Volatility": f"{item.volatility:.1%}",
                     "Decision": item.recommendation.value,
-                    "Confidence": f"{item.confidence:.0%}",
                     "As of": item.as_of.isoformat() if item.as_of else "unavailable",
-                    "Why": item.reasoning,
+                    "Why": item.reasoning + (
+                        " Gaps: " + "; ".join(item.policy_gaps) if item.policy_gaps else ""
+                    ),
                 } for item in candidates],
-                note="Phân loại theo chính sách deterministic dual-recommendation-v1; không phải chỉ dẫn giao dịch.",
+                note=(
+                    "REFERENCE_ONLY: các mã này chỉ để nghiên cứu tiếp và chưa vượt toàn bộ chính sách."
+                    if reference_only else
+                    "Phân loại theo chính sách deterministic dual-recommendation-v2; không phải chỉ dẫn giao dịch."
+                ),
             )
 
-        candidates = [*result.high_reward, *result.safe_picks]
+        candidates = [*result.high_reward, *result.safe_picks, *result.reference_only]
         newest = max((item.as_of for item in candidates if item.as_of), default=None)
-        tables = [
-            make_table("Lợi nhuận cao – rủi ro cao", result.high_reward),
-            make_table("An toàn – lợi nhuận vừa phải", result.safe_picks),
-        ]
-        if result.returned_count == requested_count:
-            count_note = f"Đã trả về đúng **{result.returned_count}** mã theo yêu cầu."
+        tables = []
+        if result.high_reward:
+            tables.append(make_table("Lợi nhuận cao – rủi ro cao", result.high_reward))
+        if result.safe_picks:
+            tables.append(make_table("An toàn – lợi nhuận vừa phải", result.safe_picks))
+        if result.reference_only:
+            tables.append(make_table(
+                "Tham khảo gần đạt chuẩn", result.reference_only, reference_only=True,
+            ))
+        if result.returned_count == requested_count and not result.reference_only:
+            count_note = f"Đã trả về đúng **{result.returned_count}** mã vượt toàn bộ chính sách."
+        elif result.returned_count == requested_count:
+            count_note = (
+                f"Có **{result.qualified_count}** mã vượt toàn bộ chính sách và bổ sung "
+                f"**{result.reference_count}** mã chỉ để tham khảo, đủ **{result.returned_count}** mã yêu cầu."
+            )
         else:
             count_note = (
-                f"Chỉ có **{result.returned_count}/{requested_count}** mã vượt qua toàn bộ chính sách; "
-                "hệ thống không tự bù bằng mã không đạt chuẩn."
+                f"Chỉ có **{result.returned_count}/{requested_count}** mã có đủ dữ liệu để xếp hạng; "
+                "hệ thống không tạo kết quả khi phân tích sâu chưa hoàn thành."
             )
         return AssistantResponse(
             message=(
                 f"### Gợi ý cổ phiếu theo hai nhóm — {result.universe_key}\n\n"
                 f"Đã xét universe **{result.universe_size}** mã, có **{result.screened_count}** mã qua sàng lọc "
                 f"kỹ thuật và phân tích sâu **{result.analyzed_count}** mã. {count_note}\n\n"
+                f"Thời gian pipeline: quick screen **{result.quick_screen_seconds:.1f}s**, "
+                f"deep analysis **{result.deep_analysis_seconds:.1f}s**.\n\n"
                 "Kết quả phục vụ học tập và nghiên cứu, không phải khuyến nghị đầu tư."
             ),
             response_type=ResponseType.STOCK_LIST,
@@ -739,10 +893,17 @@ class ChatService:
                 "dual_recommendation": result.model_dump(mode="json"),
                 "requested_result_count": requested_count,
                 "returned_result_count": result.returned_count,
+                "qualified_count": result.qualified_count,
+                "reference_count": result.reference_count,
                 "screened_count": result.screened_count,
                 "analyzed_count": result.analyzed_count,
                 "progressive_rounds": [item.model_dump(mode="json") for item in result.progressive_rounds],
                 "deep_analysis_limits": result.deep_analysis_limits,
+                "refreshed_tickers": result.refreshed_tickers,
+                "price_as_of_comparable": result.price_as_of_comparable,
+                "quick_screen_seconds": result.quick_screen_seconds,
+                "deep_analysis_seconds": result.deep_analysis_seconds,
+                "total_recommendation_seconds": result.total_seconds,
                 "policy_version": result.policy_version,
             },
         )
@@ -851,7 +1012,6 @@ class ChatService:
                     "Fundamental": f"{state.fundamental_result.signal.value} ({state.fundamental_result.score:.1f})",
                     "Risk": f"{state.risk_result.risk_level.value} ({state.risk_result.risk_score:.1f})",
                     "Recommendation": state.final_decision.recommendation.value,
-                    "Confidence": f"{state.final_decision.confidence:.0%}",
                     "Price as of": state.market_data.as_of.isoformat() if state.market_data.as_of else "unavailable",
                     "Financial period": self._latest_financial_period(state),
                 })
@@ -887,7 +1047,7 @@ class ChatService:
                 row["Fundamental"] = "UNAVAILABLE (period mismatch)"
         table = ResponseTable(
             title=f"So sánh {', '.join(tickers)}",
-            columns=["Ticker", "Technical", "Fundamental", "Risk", "Recommendation", "Confidence", "Price as of", "Financial period"],
+            columns=["Ticker", "Technical", "Fundamental", "Risk", "Recommendation", "Price as of", "Financial period"],
             rows=rows,
             note=(
                 "Scores are descriptive, not a return prediction. Fields with incompatible currency, price as-of, "

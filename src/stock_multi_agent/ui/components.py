@@ -77,7 +77,6 @@ def render_semantic_debug(response: AssistantResponse) -> None:
         first.markdown(f"**Intent:** `{semantic['intent']}`")
         first.markdown(f"**Tickers:** `{', '.join(semantic['tickers']) or '—'}`")
         first.markdown(f"**Period:** `{semantic.get('period') or '—'}`")
-        second.markdown(f"**Confidence:** `{semantic['confidence']:.0%}`")
         second.markdown(f"**Parser:** `{semantic['parser_source']}`")
         second.caption(f"Latency: {semantic.get('parser_latency_ms', 0)} ms · fallback: {semantic.get('fallback_reason') or '—'}")
         secondary = ", ".join(semantic.get("secondary_intents", [])) or "—"
@@ -105,7 +104,7 @@ def render_analysis_card(response: AssistantResponse) -> None:
             f"{metadata['data_uncertainty_score']:.1f}/10 · {metadata.get('data_uncertainty_level', '')}",
         ))
     if "recommendation" in metadata:
-        items.append(("Decision", f"{metadata['recommendation']} · {metadata.get('confidence', 0):.0%}"))
+        items.append(("Decision", metadata["recommendation"]))
     if not items:
         return
     columns = st.columns(len(items))
@@ -191,7 +190,6 @@ def render_agent_trace(response: AssistantResponse) -> None:
                         "Agent": item["agent"],
                         "Stage": item["stage"],
                         "Status": item["status"],
-                        "Confidence": item["confidence"],
                         "Evidence": item["evidence_count"],
                     }
                     for item in reports
@@ -212,10 +210,14 @@ def render_data_freshness(response: AssistantResponse) -> None:
             for source_ref in response.source_details:
                 as_of = source_ref.as_of.isoformat() if source_ref.as_of else "not supplied"
                 checksum = source_ref.content_sha256[:12] if source_ref.content_sha256 else "not captured"
+                source_link = (
+                    f"[Open source]({source_ref.source_url})"
+                    if source_ref.source_url else "Direct URL not supplied"
+                )
                 st.markdown(
                     f"**{source_ref.data_kind.value}** · `{source_ref.source_id}`  \n"
                     f"As-of: `{as_of}` · fetched UTC: `{source_ref.fetched_at.isoformat()}` · "
-                    f"schema: `{source_ref.schema_version}` · snapshot: `{checksum}`"
+                    f"schema: `{source_ref.schema_version}` · snapshot: `{checksum}` · {source_link}"
                 )
     citations = response.metadata.get("research_citations", [])
     if citations:

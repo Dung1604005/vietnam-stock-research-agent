@@ -56,7 +56,7 @@ advice. Return JSON strictly matching the requested schema."""
                 key: value
                 for key, value in response.metadata.items()
                 if key in {
-                    "recommendation", "confidence", "technical_score", "technical_signal",
+                    "recommendation", "technical_score", "technical_signal",
                     "fundamental_score", "fundamental_signal", "risk_score", "risk_level",
                     "veto", "price_forecast", "conflicts",
                 }

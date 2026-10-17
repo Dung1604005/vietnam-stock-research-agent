@@ -50,6 +50,9 @@ class ResponseComposer:
                 "decision_calibration_status": final.calibration_status,
                 "technical_score": technical.score,
                 "technical_signal": technical.signal.value,
+                "technical_policy_version": technical.policy_version,
+                "technical_feature_contributions": technical.feature_contributions,
+                "technical_diagnostics": technical.diagnostics,
                 "fundamental_score": fundamental.score,
                 "fundamental_signal": fundamental.signal.value,
                 "risk_score": risk.risk_score,
@@ -85,13 +88,17 @@ class ResponseComposer:
         bounds = ""
         if forecast.lower_bound is not None and forecast.upper_bound is not None:
             bounds = f" · vùng dao động chẩn đoán {forecast.lower_bound:,.2f}–{forecast.upper_bound:,.2f} VND"
-        confidence = "chưa hiệu chỉnh" if forecast.confidence == 0 else f"{forecast.confidence:.0%}"
+        score_role = (
+            "Ước tính LSTM này đóng góp 20% vào điểm Technical; 80% còn lại đến từ các chỉ báo kỹ thuật."
+            if forecast.status.value == "TRAINED_MODEL"
+            else "Ước tính baseline chưa huấn luyện không tham gia vào điểm Technical."
+        )
         return (
             "#### Giá hiện tại và ước tính phiên kế tiếp\n"
             f"**Giá gần nhất ({forecast.as_of.isoformat()}):** {forecast.current_price:,.2f} VND  \n"
             f"**Ước tính phiên kế tiếp:** {forecast.forecast_price:,.2f} VND{bounds}  \n"
-            f"**Trạng thái dự báo:** {forecast.status.value} · {forecast.model_version} · độ tin cậy {confidence}\n"
-            "Ước tính này độc lập với chính sách kết luận MUA/NẮM GIỮ/THEO DÕI."
+            f"**Trạng thái dự báo:** {forecast.status.value} · {forecast.model_version}\n"
+            f"{score_role}"
         )
 
     @classmethod
@@ -117,8 +124,8 @@ class ResponseComposer:
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Phân tích kỹ thuật {state.ticker}\n\n"
-                f"**Tín hiệu:** {result.signal.value} · **Điểm:** {result.score:.1f}/10 · "
-                f"**Độ tin cậy:** {result.confidence:.0%}\n\n{result.reasoning_summary}\n\n{evidence}"
+                f"**Tín hiệu:** {result.signal.value} · **Điểm:** {result.score:.1f}/10\n\n"
+                f"{result.reasoning_summary}\n\n{evidence}"
             ),
             response_type=ResponseType.ANALYSIS,
             tickers=[state.ticker], agent_trace=state.trace,
@@ -128,6 +135,9 @@ class ResponseComposer:
             data_fetched_at=state.market_data.fetched_at,
             metadata={
                 "technical_score": result.score, "technical_signal": result.signal.value,
+                "technical_policy_version": result.policy_version,
+                "technical_feature_contributions": result.feature_contributions,
+                "technical_diagnostics": result.diagnostics,
                 "price_forecast": cls._forecast_metadata(state), "agent_messages": cls._agent_messages(state),
                 **cls._agent_quality_metadata(state, [AgentName.DATA, AgentName.TECHNICAL]),
             },
@@ -143,8 +153,8 @@ class ResponseComposer:
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Phân tích cơ bản {state.ticker}\n\n"
-                f"**Tín hiệu:** {result.signal.value} · **Điểm:** {result.score:.1f}/10 · "
-                f"**Độ tin cậy:** {result.confidence:.0%}\n\n{result.reasoning_summary}\n\n{evidence}"
+                f"**Tín hiệu:** {result.signal.value} · **Điểm:** {result.score:.1f}/10\n\n"
+                f"{result.reasoning_summary}\n\n{evidence}"
             ),
             response_type=ResponseType.ANALYSIS,
             tickers=[state.ticker], agent_trace=state.trace, sources=[state.market_data.source],

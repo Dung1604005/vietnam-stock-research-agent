@@ -46,7 +46,7 @@ Cache key chứa normalizer schema version, source, ticker, lookback và việc 
 
 Default policy:
 
-- Cache TTL: 900 giây.
+- Cache TTL mặc định: 259200 giây (3 ngày). Recommendation chỉ force-refresh các mã lọt vào phân tích sâu; không tải lại toàn bộ universe trong mỗi prompt.
 - Provider timeout: 20 giây qua `VNSTOCK_TIMEOUT`.
 - Application retry: 3 lần, exponential backoff từ 0.4 giây.
 - Rate limit: pace mỗi upstream attempt (kể cả retry) tối thiểu 0.25 giây; không tạo burst khi upstream lỗi.

@@ -48,7 +48,7 @@ $env:PIP_PROGRESS_BAR = "off"
 
 The Streamlit app then loads the checksummed V2 artifact automatically. Set `STOCK_AGENT_LSTM_ENABLED=false` to disable it, or set `STOCK_AGENT_LSTM_ARTIFACT_DIR` to an alternative directory on drive D.
 
-Single-ticker application requests cannot reproduce V2's cross-sectional median-return and liquidity-percentile features. The adapter substitutes their frozen train means, which map to zero after standardization, and exposes this approximation in every forecast warning. The displayed interval is RMSE-based diagnostic dispersion rather than a calibrated prediction interval. V2 output is shown as a low-confidence research estimate and never changes BUY/SELL/HOLD.
+Single-ticker application requests cannot reproduce V2's cross-sectional median-return and liquidity-percentile features. The adapter substitutes their frozen train means, which map to zero after standardization, and exposes this approximation in every forecast warning. The displayed interval is RMSE-based diagnostic dispersion rather than a calibrated prediction interval. When a valid `TRAINED_MODEL` result is available, V2 contributes exactly 20% to the Technical Agent score; deterministic indicators contribute the remaining 80%. An untrained baseline does not affect the score, and LSTM cannot independently determine BUY/SELL/HOLD.
 
 ## Leakage-aware experiment v4
 

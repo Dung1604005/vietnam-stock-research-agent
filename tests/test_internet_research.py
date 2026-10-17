@@ -123,19 +123,30 @@ def test_chat_renders_fetched_external_evidence_not_a_search_snippet() -> None:
 
 def test_brave_provider_normalizes_official_api_results(monkeypatch: pytest.MonkeyPatch) -> None:
     provider = BraveSearchApiProvider("test-key")
-    monkeypatch.setattr(provider, "_request_json", lambda request_url: {
-        "web": {"results": [{
-            "title": "Issuer report", "url": "https://issuer.example/report", "description": "Official report",
-        }]},
-    })
+    requested_urls: list[str] = []
+
+    def fake_request(request_url: str):
+        requested_urls.append(request_url)
+        return {
+            "web": {"results": [{
+                "title": "Issuer report", "url": "https://issuer.example/report", "description": "Official report",
+            }]},
+        }
+
+    monkeypatch.setattr(provider, "_request_json", fake_request)
     results = provider.search("issuer report", 5)
     assert results[0].source_url == "https://issuer.example/report"
+    assert "search_lang=vi" in requested_urls[0]
+    assert "country=" not in requested_urls[0]
+    assert "ui_lang=" not in requested_urls[0]
 
 
 def test_web_research_selects_brave_when_credential_is_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STOCK_AGENT_WEB_SEARCH_PROVIDER", "auto")
     monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "test-key")
-    assert isinstance(WebResearchService().provider, BraveSearchApiProvider)
+    provider = WebResearchService().provider
+    assert isinstance(provider, FreeSearchProvider)
+    assert isinstance(provider.providers[0], BraveSearchApiProvider)
 
 
 def test_free_search_provider_falls_back_after_a_provider_error() -> None:

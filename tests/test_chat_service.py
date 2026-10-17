@@ -118,6 +118,8 @@ def test_required_demo_conversation_keeps_context(chat_service: ChatService) -> 
     assert comparison.response_type is ResponseType.COMPARISON
     assert comparison.tickers == ["FPT", "CMG"]
     assert len(comparison.tables[0].rows) == 2
+    assert "Confidence" not in comparison.tables[0].columns
+    assert all("Confidence" not in row for row in comparison.tables[0].rows)
 
 
 def test_market_overview_and_discovery(chat_service: ChatService) -> None:
@@ -213,6 +215,8 @@ def test_recommendation_dispatch_renders_two_buckets_and_exact_count() -> None:
     response = service.handle(query.raw_query, ConversationState(), parsed_query=query)
     assert response.tickers == ["FPT", "VNM"]
     assert len(response.tables) == 2
+    assert all("Confidence" not in table.columns for table in response.tables)
+    assert all("Confidence" not in row for table in response.tables for row in table.rows)
     assert response.metadata["returned_result_count"] == 2
     assert response.metadata["routing_plan"] == ["SCREENING", "RECOMMENDATION"]
 
@@ -530,6 +534,50 @@ class FakeWebSearchProvider:
     def search(self, query: str, limit: int) -> list[WebSearchResult]:
         self.calls += 1
         return [WebSearchResult("FPT annual report", "https://fpt.com.vn/investor", "Official investor relations report.")]
+
+
+class FakeBraveDataSourceProvider:
+    name = "brave_search_api"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def search(self, query: str, limit: int) -> list[WebSearchResult]:
+        self.calls += 1
+        assert "FPT" in query
+        assert limit == 3
+        return [WebSearchResult(
+            "FPT historical market data",
+            "https://example.com/market-data/fpt",
+            "FPT historical price and financial data",
+            provider_name=self.name,
+        )]
+
+
+def test_analysis_cites_provenance_and_uses_brave_for_missing_source_url() -> None:
+    brave = FakeBraveDataSourceProvider()
+    service = ChatService(
+        analysis_service=AnalysisService(provider=MultiTickerProvider(["FPT", "VNINDEX"])),
+        web_research=WebResearchService(
+            brave, DisabledIssuerDiscoveryProvider(), DisabledCompanyNameResolver(),
+        ),
+        universe={"default": ["FPT"]},
+    )
+    query = ParsedQuery(
+        raw_query="Phân tích kỹ thuật FPT",
+        intent=QueryIntent.TECHNICAL_ANALYSIS,
+        tickers=["FPT"],
+        confidence=0.95,
+    )
+
+    response = service.handle(query.raw_query, ConversationState(), parsed_query=query)
+
+    assert brave.calls == 1
+    assert "#### Nguồn dữ liệu" in response.message
+    assert "`test:ohlcv:FPT`" in response.message
+    assert "https://example.com/market-data/fpt" in response.message
+    assert response.metadata["data_source_citations"]["missing_source_url_count"] == 1
+    assert response.metadata["data_source_citations"]["brave_discovered_links"][0]["search_provider"] == "brave_search_api"
 
 
 class FakeIssuerDiscoveryProvider:

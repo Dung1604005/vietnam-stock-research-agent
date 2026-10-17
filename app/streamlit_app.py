@@ -34,7 +34,7 @@ SUGGESTIONS = [
 # Increment when provider construction defaults change. Streamlit preserves
 # session_state across source reloads, so this prevents an old provider object
 # from retaining a bursty rate-limit policy after an application upgrade.
-SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm-v2-kb-v2-neo4j-rag-v1-colab-qwen-v10"
+SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm20-kb-v2-neo4j-rag-v1-colab-qwen-v13-fast-recommend"
 
 
 def initialize_session() -> tuple[ChatService, InMemoryConversationStore]:

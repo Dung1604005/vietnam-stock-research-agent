@@ -15,7 +15,9 @@ Its status is always `BASELINE_UNTRAINED` and confidence is `0`. It is a visible
 - model version, horizon, point forecast, uncertainty bounds and calibrated confidence;
 - a reproducible model artifact and feature/data version.
 
-Do not train or report a deep-learning forecast until Phase F has a point-in-time dataset with adjusted-price policy, train/validation/test time splits, a naive baseline comparison, and out-of-sample error/calibration metrics. The forecasting service is deterministic infrastructure, not another LLM agent.
+Do not train or report a deep-learning forecast until Phase F has a point-in-time dataset with adjusted-price policy, train/validation/test time splits, a naive baseline comparison, and out-of-sample error/calibration metrics. The forecasting service is deterministic infrastructure, not another LLM agent. A valid one-session `TRAINED_MODEL` forecast is converted to a bounded 0-10 signal and contributes 20% to the Technical Agent score; indicator evidence contributes 80%. Baseline/unavailable forecasts contribute nothing.
+
+The runtime blend is `final_score = 0.80 * indicator_score + 0.20 * lstm_score`. The next-session predicted return is mapped linearly onto 0-10: -3% maps to 0, 0% maps to 5, and +3% maps to 10; values outside that range are clipped. The response records the pre-blend score, LSTM score, predicted return, weights and score delta in Technical diagnostics.
 
 ## Collecting an offline LSTM experiment dataset
 

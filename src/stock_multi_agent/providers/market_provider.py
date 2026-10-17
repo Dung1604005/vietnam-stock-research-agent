@@ -81,7 +81,9 @@ class VnstockMarketDataProvider:
             ),
         )
         self.executor = ResilientExecutor(policy)
-        self.cache_ttl_seconds = cache_ttl_seconds if cache_ttl_seconds is not None else _env_number("STOCK_AGENT_CACHE_TTL_SECONDS", 900, int)
+        self.cache_ttl_seconds = cache_ttl_seconds if cache_ttl_seconds is not None else _env_number(
+            "STOCK_AGENT_CACHE_TTL_SECONDS", 259200, int,
+        )
         self.cache_hits = 0
         self.cache_misses = 0
         self.last_success_at: datetime | None = None

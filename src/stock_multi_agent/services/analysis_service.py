@@ -56,6 +56,8 @@ class AnalysisService:
         investment_horizon: str = "3 months",
         max_iterations: int = 2,
         portfolio_positions: list[PortfolioPosition] | None = None,
+        allow_llm_planning: bool = True,
+        force_refresh: bool = False,
     ) -> AgentState:
         symbol = self._validate_ticker(ticker)
         if not investment_horizon.strip():
@@ -63,6 +65,8 @@ class AnalysisService:
         initial = self._initial_state(
             symbol, investment_horizon, max_iterations=max_iterations,
             required_data=["ohlcv", "financials", "benchmark"], portfolio_positions=portfolio_positions,
+            allow_llm_planning=allow_llm_planning,
+            force_data_refresh=force_refresh,
         )
         result = self.graph.invoke(initial)
         if result.market_data is not None and result.price_forecast is None:
@@ -76,6 +80,7 @@ class AnalysisService:
         include_financials: bool = False,
         include_benchmark: bool = False,
         include_forecast: bool = True,
+        force_refresh: bool = False,
     ) -> AgentState:
         required_data = ["ohlcv", "financials"] if include_financials else ["ohlcv"]
         if include_benchmark:
@@ -85,7 +90,7 @@ class AnalysisService:
             investment_horizon,
             required_data=required_data,
         )
-        result = self._merge(state, self.data_agent.run(state))
+        result = self._merge(state, self.data_agent.run(state, refresh=force_refresh))
         if result.market_data is not None and include_forecast:
             result.price_forecast = self.price_forecast_service.forecast_next_session(result.market_data)
         return result
@@ -98,10 +103,11 @@ class AnalysisService:
         include_benchmark: bool = False,
         allow_llm_planning: bool = True,
         include_forecast: bool = True,
+        force_refresh: bool = False,
     ) -> AgentState:
         state = self.fetch_data(
             ticker, investment_horizon, include_financials=False, include_benchmark=include_benchmark,
-            include_forecast=include_forecast,
+            include_forecast=include_forecast, force_refresh=force_refresh,
         )
         state.requested_indicators = requested_indicators or []
         return self._merge(
@@ -128,6 +134,8 @@ class AnalysisService:
         max_iterations: int = 2,
         required_data: list[str] | None = None,
         portfolio_positions: list[PortfolioPosition] | None = None,
+        allow_llm_planning: bool = True,
+        force_data_refresh: bool = False,
     ) -> AgentState:
         return AgentState(
             ticker=symbol,
@@ -136,6 +144,8 @@ class AnalysisService:
             max_iterations=max_iterations,
             required_data=required_data or ["ohlcv", "financials"],
             portfolio_positions=portfolio_positions or [],
+            allow_llm_planning=allow_llm_planning,
+            force_data_refresh=force_data_refresh,
         )
 
     @staticmethod

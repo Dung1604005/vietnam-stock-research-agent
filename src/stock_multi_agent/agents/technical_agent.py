@@ -5,6 +5,7 @@ import os
 from stock_multi_agent.agents.base_agent import BaseAgent
 from stock_multi_agent.models.agent_contracts import AgentSpec, TechnicalAgentContext
 from stock_multi_agent.models.analysis import EvidenceItem, PriceAdjustment, Signal, TechnicalAnalysis
+from stock_multi_agent.models.forecast import ForecastStatus
 from stock_multi_agent.models.llm import AgentLLMReview
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState, TraceEvent
@@ -28,13 +29,15 @@ class TechnicalAgent(BaseAgent):
             "SMA", "RSI", "MACD", "annualized_volatility", "volume_ratio",
             "average_traded_value", "BOLLINGER_BANDS", "MAX_DRAWDOWN",
             "SUPPORT_RESISTANCE", "ATR", "ADX", "local_llm_indicator_planner",
+            "lstm_price_forecast_blend",
         ],
         output_type="TechnicalAnalysis",
         can_use_llm=True,
         decision_constraints=[
             "LLM may select allowlisted tools but never calculate indicator values",
             "Python owns scores, signals, and numerical evidence",
-            "Forecast output is context and cannot directly override the technical signal",
+            "A valid one-session LSTM forecast contributes exactly 20% to the final technical score",
+            "An untrained baseline or unavailable forecast contributes 0% to the technical score",
         ],
     )
 
@@ -57,6 +60,7 @@ class TechnicalAgent(BaseAgent):
             "OBSERVE", "READ_MARKET_DATA", f"Observe {len(closes)} OHLCV bars; profile={profile.name}",
         )]
         required_history = max(50, profile.slow_window + profile.macd_signal)
+        buy_threshold = 7.0
         source_ids = [source.source_id for source in state.market_data.source_refs]
         indicator_plan = self._existing_indicator_plan(state) if extended else None
         if indicator_plan is None and not state.requested_indicators and allow_llm_planning:
@@ -74,11 +78,25 @@ class TechnicalAgent(BaseAgent):
         elif state.requested_indicators and not extended:
             analysis, extra_traces = self._run_requested_indicators(state, closes, volumes, state.requested_indicators, timeframe, profile)
             traces.extend(extra_traces)
+            buy_threshold = 6.5
         else:
             analysis, extra_traces = self._run_default(
                 state, closes, volumes, timeframe, profile, selected_checks,
             )
             traces.extend(extra_traces)
+
+        analysis, blend_applied = self._apply_lstm_blend(
+            state,
+            analysis,
+            buy_threshold=buy_threshold,
+        )
+        if blend_applied:
+            traces.append(self.event(
+                "REASON",
+                "BLEND_LSTM_FORECAST",
+                "Final technical score = 80% indicator score + 20% LSTM score",
+                "lstm_price_forecast_blend",
+            ))
 
         llm_review = None
         if indicator_plan is not None and not extended:
@@ -295,6 +313,93 @@ class TechnicalAgent(BaseAgent):
             timeframe=timeframe, horizon_profile=profile.name,
             feature_contributions=contributions, diagnostics=diagnostics,
         ), traces
+
+    @staticmethod
+    def _apply_lstm_blend(
+        state: AgentState,
+        analysis: TechnicalAnalysis,
+        *,
+        buy_threshold: float,
+    ) -> tuple[TechnicalAnalysis, bool]:
+        """Blend an eligible next-session LSTM signal into the Technical score.
+
+        The model return is mapped deterministically onto a 0-10 score. A return
+        of -3% or less maps to 0, 0% maps to 5, and +3% or more maps to 10.
+        Keeping the mapping bounded prevents the model from dominating the
+        indicator engine even when it produces an extreme estimate.
+        """
+        forecast = state.price_forecast
+        if (
+            forecast is None
+            or forecast.status is not ForecastStatus.TRAINED_MODEL
+            or forecast.horizon_sessions != 1
+            or forecast.forecast_price is None
+            or forecast.current_price <= 0
+            or analysis.signal is Signal.UNKNOWN
+        ):
+            return analysis, False
+
+        lstm_weight = 0.2
+        indicator_weight = 1.0 - lstm_weight
+        return_scale = 0.03
+        expected_return = forecast.forecast_price / forecast.current_price - 1.0
+        bounded_return = max(-return_scale, min(return_scale, expected_return))
+        lstm_score = 5.0 + 5.0 * bounded_return / return_scale
+        indicator_score = analysis.score
+        blended_score = max(
+            0.0,
+            min(10.0, indicator_weight * indicator_score + lstm_weight * lstm_score),
+        )
+        signal = (
+            Signal.BUY
+            if blended_score >= buy_threshold
+            else Signal.HOLD
+            if blended_score >= 4.0
+            else Signal.SELL
+        )
+
+        diagnostics = dict(analysis.diagnostics)
+        diagnostics.update({
+            "indicator_score_before_lstm": round(indicator_score, 4),
+            "lstm_score": round(lstm_score, 4),
+            "lstm_expected_return": round(expected_return, 8),
+            "lstm_weight": lstm_weight,
+            "indicator_weight": indicator_weight,
+            "lstm_return_scale": return_scale,
+        })
+        contributions = dict(analysis.feature_contributions)
+        contributions["lstm_blend_delta"] = round(blended_score - indicator_score, 4)
+        evidence = [
+            *analysis.evidence,
+            EvidenceItem(
+                label="LSTM 20% blend",
+                value=(
+                    f"Expected next-session return {expected_return:.2%}; "
+                    f"LSTM score {lstm_score:.2f}/10; final blended score {blended_score:.2f}/10"
+                ),
+                input_fields=["price_forecast.current_price", "price_forecast.forecast_price"],
+                source_ids=[source.source_id for source in state.market_data.source_refs]
+                if state.market_data else [],
+                as_of=forecast.as_of,
+                confidence=forecast.confidence,
+            ),
+        ]
+        return analysis.model_copy(update={
+            "signal": signal,
+            "score": round(blended_score, 2),
+            "evidence": evidence,
+            "tools_used": list(dict.fromkeys([
+                *analysis.tools_used,
+                "lstm_price_forecast_blend",
+            ])),
+            "reasoning_summary": (
+                f"{analysis.reasoning_summary} Final score uses 80% indicator evidence "
+                f"and 20% LSTM next-session signal, resulting in {blended_score:.2f}/10 ({signal.value})."
+            ),
+            "policy_version": "technical-v3-lstm20",
+            "feature_contributions": contributions,
+            "diagnostics": diagnostics,
+        }), True
 
     def _request_indicator_plan(
         self,

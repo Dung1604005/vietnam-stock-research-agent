@@ -31,6 +31,11 @@ class RecommendationBucket(str, Enum):
     UNCLASSIFIED = "UNCLASSIFIED"
 
 
+class CandidateSelectionTier(str, Enum):
+    QUALIFIED = "QUALIFIED"
+    REFERENCE_ONLY = "REFERENCE_ONLY"
+
+
 class UniverseDefinition(BaseModel):
     """A disclosed universe. Current captures are never historical membership evidence."""
 
@@ -53,6 +58,9 @@ class ScreenSpec(BaseModel):
     eligible_signals: list[Signal] = Field(default_factory=lambda: [Signal.BUY, Signal.HOLD])
     missing_data_policy: MissingDataPolicy = MissingDataPolicy.EXCLUDE_FROM_RANKING
     require_same_price_as_of: bool = True
+    max_price_as_of_lag_days: int = Field(default=3, ge=0, le=10)
+    max_price_age_days: int | None = Field(default=None, ge=0, le=30)
+    refresh_stale_data: bool = True
     candidate_selection_policy: str = "configured_order_v1"
     factor_policy_version: str = "screen-v2"
     ranking_direction: RankingDirection = RankingDirection.HIGHER_SCORE_FIRST
@@ -91,22 +99,33 @@ class RecommendationCandidate(BaseModel):
     evidence_highlights: list[str] = Field(default_factory=list, max_length=3)
     as_of: date | None = None
     source_ids: list[str] = Field(default_factory=list)
+    selection_tier: CandidateSelectionTier = CandidateSelectionTier.QUALIFIED
+    policy_gaps: list[str] = Field(default_factory=list)
+    veto: bool = False
 
 
 class DualRecommendation(BaseModel):
     high_reward: list[RecommendationCandidate] = Field(default_factory=list)
     safe_picks: list[RecommendationCandidate] = Field(default_factory=list)
+    reference_only: list[RecommendationCandidate] = Field(default_factory=list)
     universe_key: str
     universe_size: int = Field(ge=0)
     screened_count: int = Field(ge=0)
     analyzed_count: int = Field(ge=0)
     requested_count: int = Field(ge=1, le=100)
     returned_count: int = Field(ge=0)
+    qualified_count: int = Field(default=0, ge=0)
+    reference_count: int = Field(default=0, ge=0)
     horizon: str
     progressive_rounds: list[ProgressiveScreenRound] = Field(default_factory=list)
     deep_analysis_limits: list[int] = Field(default_factory=list)
+    refreshed_tickers: list[str] = Field(default_factory=list)
+    price_as_of_comparable: bool = False
+    quick_screen_seconds: float = Field(default=0.0, ge=0)
+    deep_analysis_seconds: float = Field(default=0.0, ge=0)
+    total_seconds: float = Field(default=0.0, ge=0)
     warnings: list[str] = Field(default_factory=list)
-    policy_version: str = "dual-recommendation-v1"
+    policy_version: str = "dual-recommendation-v2-reference-fallback"
     disclaimer: str = "Educational analysis only — not financial advice."
 
 

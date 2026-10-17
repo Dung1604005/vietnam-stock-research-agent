@@ -55,6 +55,8 @@ class AgentState(BaseModel):
     completed_tasks: Annotated[list[str], operator.add] = Field(default_factory=list)
     iteration: int = Field(default=0, ge=0)
     max_iterations: int = Field(default=2, ge=0, le=10)
+    allow_llm_planning: bool = True
+    force_data_refresh: bool = False
     conflict_detected: bool = False
     reanalysis_requested: bool = False
     active_conflicts: list[ConflictRecord] = Field(default_factory=list)

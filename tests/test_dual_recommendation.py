@@ -74,17 +74,43 @@ class _FakeScreening:
             )],
             candidates=[SimpleNamespace(ticker=ticker, status=ScreenStatus.PASS) for ticker in self.tickers],
             selected_tickers=self.tickers[:target_count],
+            refreshed_tickers=[],
+            price_as_of_comparable=True,
         )
+
+
+class _AllFailedScreening(_FakeScreening):
+    def run_progressive(self, spec, horizon, target_count):
+        result = super().run_progressive(spec, horizon, target_count)
+        result.pass_count = 0
+        result.candidates = [
+            SimpleNamespace(ticker=ticker, status=ScreenStatus.FAIL, technical_score=6.0 - index * 0.1)
+            for index, ticker in enumerate(self.tickers)
+        ]
+        return result
 
 
 class _FakeAnalysis:
     def __init__(self, states: dict[str, AgentState]) -> None:
         self.states = states
         self.calls: list[str] = []
+        self.options: list[dict[str, object]] = []
 
-    def analyze(self, ticker: str, horizon: str, max_iterations: int = 2) -> AgentState:
-        del horizon, max_iterations
+    def analyze(
+        self,
+        ticker: str,
+        horizon: str,
+        max_iterations: int = 2,
+        allow_llm_planning: bool = True,
+        force_refresh: bool = False,
+    ) -> AgentState:
+        del horizon
         self.calls.append(ticker)
+        self.options.append({
+            "max_iterations": max_iterations,
+            "allow_llm_planning": allow_llm_planning,
+            "force_refresh": force_refresh,
+        })
         return self.states[ticker]
 
 
@@ -107,7 +133,9 @@ def test_dual_recommendation_returns_exact_balanced_count_when_policy_allows() -
     assert len(result.safe_picks) == 2
     assert result.analyzed_count == 4
     assert analysis.calls == tickers[:4]
-    assert result.deep_analysis_limits == [6]
+    assert result.deep_analysis_limits == [4]
+    assert all(option["max_iterations"] == 0 for option in analysis.options)
+    assert all(option["allow_llm_planning"] is False for option in analysis.options)
 
 
 def test_dual_recommendation_reports_honest_shortfall() -> None:
@@ -149,3 +177,55 @@ def test_dual_recommendation_expands_deep_analysis_until_count_is_met() -> None:
     assert result.returned_count == 4
     assert result.deep_analysis_limits == [4, 8]
     assert analysis.calls == tickers
+
+
+def test_dual_recommendation_returns_labelled_reference_candidates_when_none_qualify() -> None:
+    tickers = ["FPT", "VNM", "HPG", "VCB"]
+    states = {}
+    for ticker in tickers:
+        state = _state(ticker, RecommendationBucket.SAFE_MODERATE_RETURN)
+        state.risk_result = state.risk_result.model_copy(update={
+            "risk_score": 5.5,
+            "data_uncertainty_level": RiskLevel.HIGH,
+        })
+        state.final_decision = state.final_decision.model_copy(update={
+            "recommendation": Recommendation.WATCH,
+        })
+        states[ticker] = state
+
+    result = RecommendationService(_FakeScreening(tickers), _FakeAnalysis(states)).recommend(
+        requested_count=4,
+    )
+
+    assert result.qualified_count == 0
+    assert result.reference_count == 4
+    assert result.returned_count == 4
+    assert len(result.reference_only) == 4
+    assert all(item.selection_tier.value == "REFERENCE_ONLY" for item in result.reference_only)
+    assert all(item.policy_gaps for item in result.reference_only)
+    assert any("reference-only" in warning for warning in result.warnings)
+
+
+def test_dual_recommendation_deeply_analyzes_best_failed_screen_candidates_as_references() -> None:
+    tickers = ["FPT", "VNM", "HPG"]
+    states = {}
+    for ticker in tickers:
+        state = _state(ticker, RecommendationBucket.SAFE_MODERATE_RETURN)
+        state.risk_result = state.risk_result.model_copy(update={
+            "risk_score": 6.0,
+            "data_uncertainty_level": RiskLevel.HIGH,
+        })
+        state.final_decision = state.final_decision.model_copy(update={
+            "recommendation": Recommendation.WATCH,
+        })
+        states[ticker] = state
+
+    result = RecommendationService(_AllFailedScreening(tickers), _FakeAnalysis(states)).recommend(
+        requested_count=2,
+    )
+
+    assert result.screened_count == 0
+    assert result.returned_count == 2
+    assert result.reference_count == 2
+    assert [item.ticker for item in result.reference_only] == ["FPT", "VNM"]
+    assert any("near-screen" in warning for warning in result.warnings)

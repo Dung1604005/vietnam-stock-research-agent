@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from collections.abc import Callable
+from datetime import date, datetime
 from math import ceil
 
 from stock_multi_agent.models.messages import AgentName
@@ -28,8 +29,10 @@ class ScreenRun:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     price_as_of_aligned: bool = False
+    price_as_of_comparable: bool = False
     progressive_rounds: list[ProgressiveScreenRound] = field(default_factory=list)
     selected_tickers: list[str] = field(default_factory=list)
+    refreshed_tickers: list[str] = field(default_factory=list)
 
     @property
     def pass_count(self) -> int:
@@ -39,9 +42,15 @@ class ScreenRun:
 class ScreeningService:
     """Bounded batch orchestration over the configured universe and cached provider."""
 
-    def __init__(self, analysis: AnalysisService, universes: UniverseService) -> None:
+    def __init__(
+        self,
+        analysis: AnalysisService,
+        universes: UniverseService,
+        today_provider: Callable[[], date] | None = None,
+    ) -> None:
         self.analysis = analysis
         self.universes = universes
+        self.today_provider = today_provider or date.today
 
     def run(self, spec: ScreenSpec, horizon: str) -> ScreenRun:
         universe = self.universes.select(spec.universe_key)
@@ -108,14 +117,141 @@ class ScreeningService:
                         ))
                     break
                 result.warnings.append(f"{ticker}: {exc}")
-        comparable_dates = {item.as_of for item in result.candidates if item.status is not ScreenStatus.UNAVAILABLE and item.as_of}
-        result.price_as_of_aligned = len(comparable_dates) == 1
-        if spec.require_same_price_as_of and not result.price_as_of_aligned:
-            result.warnings.append("Price as-of dates differ or are missing: technical ranking is withheld.")
-            for item in result.candidates:
-                if item.status is not ScreenStatus.UNAVAILABLE:
+        available = [item for item in result.candidates if item.status is not ScreenStatus.UNAVAILABLE]
+        dated = [item for item in available if item.as_of is not None]
+        if spec.require_same_price_as_of and available and spec.refresh_stale_data:
+            today = self.today_provider()
+            newest_before_refresh = max(
+                (item.as_of for item in dated if item.as_of is not None),
+                default=None,
+            )
+            refresh_targets = [
+                item for item in available
+                if item.as_of is None
+                or (
+                    newest_before_refresh is not None
+                    and (newest_before_refresh - item.as_of).days > spec.max_price_as_of_lag_days
+                )
+                or (
+                    item.as_of is not None
+                    and spec.max_price_age_days is not None
+                    and (today - item.as_of).days > spec.max_price_age_days
+                )
+            ]
+            for item in refresh_targets:
+                try:
+                    result.refreshed_tickers.append(item.ticker)
+                    result.traces.append(TraceEvent(
+                        agent=AgentName.DATA,
+                        phase="ACT",
+                        action="REFRESH_STALE_DATA",
+                        detail=(
+                            f"Bypass cache once for stale/missing as-of data: {item.ticker}; "
+                            f"tolerance={spec.max_price_as_of_lag_days} days."
+                        ),
+                        tool="get_stock_data",
+                    ))
+                    refreshed = self.analysis.analyze_technical(
+                        item.ticker,
+                        horizon,
+                        allow_llm_planning=False,
+                        include_forecast=False,
+                        force_refresh=True,
+                    )
+                    if refreshed.market_data is None or refreshed.technical_result is None:
+                        raise ValueError("Refreshed technical analysis returned no structured result")
+                    data = refreshed.market_data
+                    technical = refreshed.technical_result
+                    item.technical_signal = technical.signal
+                    item.technical_score = technical.score
+                    item.as_of = data.as_of
+                    item.source_ids = [source.source_id for source in data.source_refs]
+                    item.reasons = []
+                    if data.quality_report.status.value == "FAIL":
+                        item.status = ScreenStatus.UNAVAILABLE
+                        item.reasons.append("Excluded after refresh: market-data quality failed.")
+                    elif technical.signal not in spec.eligible_signals:
+                        item.status = ScreenStatus.FAIL
+                        item.reasons.append(f"Signal {technical.signal.value} is not eligible after refresh.")
+                    elif technical.score < spec.minimum_technical_score:
+                        item.status = ScreenStatus.FAIL
+                        item.reasons.append(
+                            f"Technical score {technical.score:.1f} is below "
+                            f"{spec.minimum_technical_score:.1f} after refresh."
+                        )
+                    else:
+                        item.status = ScreenStatus.PASS
+                        item.reasons.append(
+                            f"Refreshed data: signal {technical.signal.value} and score "
+                            f"{technical.score:.1f} meet screen policy."
+                        )
+                    result.traces.extend(refreshed.trace)
+                    result.source_details.extend(data.source_refs)
+                    if result.newest_fetched_at is None or data.fetched_at > result.newest_fetched_at:
+                        result.newest_fetched_at = data.fetched_at
+                except (MarketDataError, ValueError) as exc:
                     item.status = ScreenStatus.UNAVAILABLE
-                    item.reasons.append("Excluded from ranking: price as-of is not aligned across the screen.")
+                    item.reasons.append(f"Refresh failed: {type(exc).__name__}: {exc}")
+                    result.warnings.append(f"{item.ticker}: stale-data refresh failed ({exc})")
+                    if is_rate_limit_error(exc):
+                        result.warnings.append(
+                            "Stopped stale-data refresh because the provider rate limit was reached."
+                        )
+                        break
+
+        available = [item for item in result.candidates if item.status is not ScreenStatus.UNAVAILABLE]
+        dated = [item for item in available if item.as_of is not None]
+        comparable_dates = {item.as_of for item in dated}
+        result.price_as_of_aligned = bool(dated) and len(comparable_dates) == 1 and len(dated) == len(available)
+        if spec.require_same_price_as_of:
+            if not dated:
+                result.warnings.append("Price as-of dates are missing: no candidate can be ranked.")
+                for item in available:
+                    item.status = ScreenStatus.UNAVAILABLE
+                    item.reasons.append("Excluded from ranking: price as-of is missing after refresh.")
+            else:
+                newest = max(item.as_of for item in dated if item.as_of is not None)
+                relative_stale = [
+                    item for item in dated
+                    if item.as_of is not None
+                    and (newest - item.as_of).days > spec.max_price_as_of_lag_days
+                ]
+                absolute_stale = [
+                    item for item in dated
+                    if item.as_of is not None
+                    and spec.max_price_age_days is not None
+                    and (self.today_provider() - item.as_of).days > spec.max_price_age_days
+                ]
+                stale = list({item.ticker: item for item in [*relative_stale, *absolute_stale]}.values())
+                missing_dates = [item for item in available if item.as_of is None]
+                for item in missing_dates:
+                    item.status = ScreenStatus.UNAVAILABLE
+                    item.reasons.append("Excluded from ranking: price as-of is missing after refresh.")
+                for item in stale:
+                    relative_lag = (newest - item.as_of).days if item.as_of is not None else -1
+                    age = (self.today_provider() - item.as_of).days if item.as_of is not None else -1
+                    item.status = ScreenStatus.UNAVAILABLE
+                    item.reasons.append(
+                        f"Excluded from ranking: refreshed price data remains stale "
+                        f"(relative lag={relative_lag} days, age={age} days)."
+                    )
+                remaining = [
+                    item for item in result.candidates
+                    if item.status is not ScreenStatus.UNAVAILABLE and item.as_of is not None
+                ]
+                result.price_as_of_comparable = bool(remaining)
+                if stale or missing_dates:
+                    result.warnings.append(
+                        f"Excluded {len(stale) + len(missing_dates)} stale/missing-date symbols after refresh; "
+                        f"ranking continues for data within {spec.max_price_as_of_lag_days} days of {newest}."
+                    )
+                elif not result.price_as_of_aligned:
+                    result.warnings.append(
+                        f"Price as-of dates differ but remain within the "
+                        f"{spec.max_price_as_of_lag_days}-day comparison tolerance."
+                    )
+        else:
+            result.price_as_of_comparable = bool(available)
         ranked = sorted(
             (item for item in result.candidates if item.status is ScreenStatus.PASS),
             key=lambda item: (

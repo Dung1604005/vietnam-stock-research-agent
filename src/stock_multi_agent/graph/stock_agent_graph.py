@@ -32,11 +32,15 @@ class StockAgentGraph:
     def _build(self) -> StateGraph:
         graph = StateGraph(AgentState)
         graph.add_node("manager_plan", self.manager_agent.plan)
-        graph.add_node("data", self.data_agent.run)
+        graph.add_node("data", lambda state: self.data_agent.run(state, refresh=state.force_data_refresh))
         graph.add_node("forecast", self._forecast)
         graph.add_node("research", self.research_agent.run)
         graph.add_node("dispatch_specialists", self.manager_agent.dispatch_specialists)
-        graph.add_node("technical", lambda state: self.technical_agent.run(state, extended=False))
+        graph.add_node("technical", lambda state: self.technical_agent.run(
+            state,
+            extended=False,
+            allow_llm_planning=state.allow_llm_planning,
+        ))
         graph.add_node("fundamental", self.fundamental_agent.run)
         graph.add_node("dispatch_risk", self.manager_agent.dispatch_risk)
         graph.add_node("risk", self.risk_agent.run)

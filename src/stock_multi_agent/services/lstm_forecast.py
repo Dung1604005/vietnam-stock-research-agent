@@ -95,7 +95,7 @@ class LstmV2ForecastModel:
             "LSTM V2 is a classroom research candidate; its next-session holdout edge over zero return was only 0.0842% by MAE.",
             "Cross-sectional market return and liquidity percentile are unavailable in single-ticker inference and use frozen train-mean proxies.",
             "The displayed range is RMSE-based diagnostic dispersion, not a calibrated prediction interval.",
-            "This forecast must not change BUY/SELL/HOLD or be treated as a trade instruction.",
+            "This forecast contributes at most 20% to the Technical Agent score and cannot independently determine BUY/SELL/HOLD.",
         ]
         if ticker_id == 0:
             warnings.append(

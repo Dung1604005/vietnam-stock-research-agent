@@ -10,14 +10,15 @@ from stock_multi_agent.models.data import DataKind, PriceAdjustment, SourceRefer
 
 def conflict_market_data(ticker: str = "FPT") -> MarketData:
     bars: list[PriceBar] = []
-    current_date = date(2025, 1, 1)
-    day = 0
-    while len(bars) < 260:
-        value_date = current_date + timedelta(days=day)
-        day += 1
-        if value_date.weekday() >= 5:
-            continue
-        index = len(bars)
+    value_date = date.today()
+    while value_date.weekday() >= 5:
+        value_date -= timedelta(days=1)
+    business_dates: list[date] = []
+    while len(business_dates) < 260:
+        if value_date.weekday() < 5:
+            business_dates.append(value_date)
+        value_date -= timedelta(days=1)
+    for index, value_date in enumerate(reversed(business_dates)):
         if index < 100:
             baseline = 100 + 0.5 * index
         elif index < 150:

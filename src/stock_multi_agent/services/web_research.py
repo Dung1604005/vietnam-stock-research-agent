@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from html import unescape
 from html.parser import HTMLParser
 from typing import Protocol
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
@@ -343,7 +344,7 @@ class GdeltNewsSearchProvider:
 
 
 class FreeSearchProvider:
-    """No-key source discovery: GDELT news first, then Bing RSS compatibility."""
+    """Ordered provider chain; defaults to GDELT then Bing without credentials."""
 
     name = "free_gdelt_then_bing"
 
@@ -385,7 +386,7 @@ class BraveSearchApiProvider:
     endpoint = "https://api.search.brave.com/res/v1/web/search"
     max_response_bytes = 1_000_000
 
-    def __init__(self, api_key: str, *, country: str = "VN", search_lang: str = "vi") -> None:
+    def __init__(self, api_key: str, *, country: str | None = None, search_lang: str = "vi") -> None:
         if not api_key.strip():
             raise ValueError("Brave Search API key cannot be empty.")
         self.api_key = api_key
@@ -393,15 +394,18 @@ class BraveSearchApiProvider:
         self.search_lang = search_lang
 
     def search(self, query: str, limit: int) -> list[WebSearchResult]:
-        params = {
+        params: dict[str, str] = {
             "q": query,
             "count": str(max(1, min(limit, 20))),
-            "country": self.country,
             "search_lang": self.search_lang,
-            "ui_lang": "vi-VN",
             "safesearch": "moderate",
             "result_filter": "web",
         }
+        # Brave supports Vietnamese search results, but VN is not currently
+        # in its country-bias enum. Omitting country avoids HTTP 422 while the
+        # query itself still carries the Vietnam/ticker context.
+        if self.country:
+            params["country"] = self.country
         freshness = os.getenv("STOCK_AGENT_WEB_SEARCH_FRESHNESS", "").strip()
         if freshness:
             params["freshness"] = freshness
@@ -431,8 +435,18 @@ class BraveSearchApiProvider:
         try:
             with urlopen(request, timeout=12) as response:  # noqa: S310 - fixed official Brave API endpoint
                 payload = response.read(self.max_response_bytes + 1)
-        except OSError as exc:
-            raise WebResearchError("Brave Search API is temporarily unavailable.") from exc
+        except HTTPError as exc:
+            detail = self._http_error_detail(exc)
+            label = {
+                401: "authentication failed",
+                403: "access was denied",
+                422: "request parameters were rejected",
+                429: "quota or rate limit was reached",
+            }.get(exc.code, "request failed")
+            suffix = f": {detail}" if detail else ""
+            raise WebResearchError(f"Brave Search API {label} (HTTP {exc.code}){suffix}") from exc
+        except (URLError, OSError) as exc:
+            raise WebResearchError(f"Brave Search API network error: {type(exc).__name__}") from exc
         if len(payload) > self.max_response_bytes:
             raise WebResearchError("Brave Search API response exceeded the safety limit.")
         try:
@@ -442,6 +456,21 @@ class BraveSearchApiProvider:
         if not isinstance(decoded, dict):
             raise WebResearchError("Brave Search API returned an unexpected response.")
         return decoded
+
+    @staticmethod
+    def _http_error_detail(exc: HTTPError) -> str | None:
+        try:
+            payload = exc.read(65_537)
+            if len(payload) > 65_536:
+                return None
+            decoded = json.loads(payload.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        error = decoded.get("error") if isinstance(decoded, dict) else None
+        if not isinstance(error, dict):
+            return None
+        detail = error.get("detail")
+        return str(detail)[:300] if detail else None
 
 
 class WebResearchService:
@@ -469,10 +498,16 @@ class WebResearchService:
         provider = os.getenv("STOCK_AGENT_WEB_SEARCH_PROVIDER", "free").strip().lower()
         brave_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
         key_is_placeholder = brave_key.casefold() in {"your_key", "your_api_key", "brave_api_key"}
-        if provider in {"auto", "brave"} and brave_key and not key_is_placeholder:
+        if provider == "brave" and brave_key and not key_is_placeholder:
             return BraveSearchApiProvider(brave_key)
         if provider == "brave":
             return DisabledWebSearchProvider()
+        if provider == "auto" and brave_key and not key_is_placeholder:
+            return FreeSearchProvider([
+                BraveSearchApiProvider(brave_key),
+                GdeltNewsSearchProvider(),
+                BingRssSearchProvider(),
+            ])
         if provider == "bing":
             return BingRssSearchProvider()
         if provider == "duckduckgo":

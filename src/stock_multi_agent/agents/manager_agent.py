@@ -99,9 +99,10 @@ class ManagerAgent(BaseAgent):
 
         allowed_source_ids = list(dict.fromkeys(item.source_id for item in response.source_details))[:20]
         safe_metadata_keys = {
-            "recommendation", "confidence", "technical_score", "technical_signal",
+            "recommendation", "technical_score", "technical_signal",
             "fundamental_score", "fundamental_signal", "risk_score", "risk_level", "veto",
             "requested_count", "returned_count", "screen_status", "forecast_status",
+            "qualified_count", "reference_count",
         }
         facts: dict[str, Any] = {
             "user_request": query.raw_query[:800],
@@ -548,7 +549,7 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             "reanalysis_requested": False,
             "messages": [self.message(AgentName.USER, MessageType.FINAL_DECISION, "Final educational assessment", final.model_dump(mode="json"), final.confidence)],
             "trace": [
-                self.event("ACT", "FINAL_DECISION", f"{recommendation.value}, confidence={confidence:.2f}"),
+                self.event("ACT", "FINAL_DECISION", recommendation.value),
             ],
             "completed_tasks": ["final_decision"],
             "agent_reports": [self.report(

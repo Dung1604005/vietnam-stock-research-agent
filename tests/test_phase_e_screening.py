@@ -29,6 +29,20 @@ class ScreenProvider:
         return self.data[ticker]
 
 
+class RefreshingScreenProvider(ScreenProvider):
+    def __init__(self, tickers: list[str]) -> None:
+        super().__init__(tickers)
+        self.refresh_calls: list[str] = []
+
+    def refresh_market_data(self, ticker: str, include_financials: bool = True):
+        del include_financials
+        self.refresh_calls.append(ticker)
+        data = self.data[ticker]
+        refreshed = data.model_copy(update={"as_of": data.bars[-1].date})
+        self.data[ticker] = refreshed
+        return refreshed
+
+
 class RateLimitedScreenProvider:
     def __init__(self) -> None:
         self.calls = 0
@@ -118,7 +132,7 @@ def test_current_listing_normalization_excludes_non_equities_and_invalid_symbols
     assert instruments[0].name == "FPT Corp"
 
 
-def test_screen_withholds_ranking_when_price_dates_do_not_align() -> None:
+def test_screen_ranks_price_dates_within_three_day_tolerance() -> None:
     provider = ScreenProvider(["FPT", "CMG", "VNINDEX"])
     provider.data["CMG"] = provider.data["CMG"].model_copy(
         update={"as_of": provider.data["CMG"].as_of - timedelta(days=1)},
@@ -127,9 +141,48 @@ def test_screen_withholds_ranking_when_price_dates_do_not_align() -> None:
         ScreenSpec(universe_key="default"), "3 months",
     )
     assert run.price_as_of_aligned is False
-    assert all(item.status is ScreenStatus.UNAVAILABLE for item in run.candidates)
-    assert all(item.rank is None for item in run.candidates)
-    assert "ranking is withheld" in run.warnings[0]
+    assert run.price_as_of_comparable is True
+    assert all(item.status is ScreenStatus.PASS for item in run.candidates)
+    assert all(item.rank is not None for item in run.candidates)
+    assert "within the 3-day comparison tolerance" in run.warnings[0]
+
+
+def test_screen_refreshes_only_stale_symbol_before_ranking() -> None:
+    provider = RefreshingScreenProvider(["FPT", "CMG", "VNINDEX"])
+    provider.data["CMG"] = provider.data["CMG"].model_copy(
+        update={"as_of": provider.data["CMG"].as_of - timedelta(days=5)},
+    )
+    run = ScreeningService(
+        AnalysisService(provider=provider), UniverseService({"default": ["FPT", "CMG"]}),
+    ).run(ScreenSpec(universe_key="default"), "3 months")
+
+    assert provider.refresh_calls == ["CMG"]
+    assert run.refreshed_tickers == ["CMG"]
+    assert run.price_as_of_aligned is True
+    assert run.price_as_of_comparable is True
+    assert all(item.status is ScreenStatus.PASS for item in run.candidates)
+    assert "Refreshed data" in next(item for item in run.candidates if item.ticker == "CMG").reasons[0]
+
+
+def test_screen_refreshes_uniformly_old_cached_data_against_today() -> None:
+    provider = RefreshingScreenProvider(["FPT", "CMG", "VNINDEX"])
+    for ticker in ["FPT", "CMG"]:
+        provider.data[ticker] = provider.data[ticker].model_copy(
+            update={"as_of": provider.data[ticker].as_of - timedelta(days=5)},
+        )
+    run = ScreeningService(
+        AnalysisService(provider=provider),
+        UniverseService({"default": ["FPT", "CMG"]}),
+        today_provider=lambda: provider.data["VNINDEX"].as_of,
+    ).run(
+        ScreenSpec(universe_key="default", max_price_age_days=3),
+        "3 months",
+    )
+
+    assert provider.refresh_calls == ["FPT", "CMG"]
+    assert run.refreshed_tickers == ["FPT", "CMG"]
+    assert run.price_as_of_comparable is True
+    assert all(item.status is ScreenStatus.PASS for item in run.candidates)
 
 
 def test_progressive_screen_halves_ranked_pool_without_refetching() -> None:

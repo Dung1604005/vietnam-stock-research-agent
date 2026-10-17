@@ -91,7 +91,15 @@ Các kết quả lỗi hoặc thiếu dữ liệu không được âm thầm bi�
 
 Ưu tiên risk score thấp, sau đó fundamental và technical score cao.
 
-Nếu chỉ một bucket có đủ ứng viên, hệ thống dùng ứng viên còn lại của bucket đó để lấp quota. Nếu tổng số ứng viên hợp lệ vẫn thiếu, hệ thống trả ít hơn yêu cầu và giải thích shortfall; không hạ chuẩn ngầm.
+Nếu chỉ một bucket có đủ ứng viên, hệ thống dùng ứng viên còn lại của bucket đó để lấp quota. Nếu số mã vượt toàn bộ chính sách vẫn thiếu, hệ thống bổ sung bảng `REFERENCE_ONLY` từ các mã đã phân tích sâu. Các mã này được xếp theo veto, kết luận Manager, rủi ro, tổng điểm và confidence; mỗi mã phải công khai policy gap và không được trình bày như mã đã đạt chuẩn.
+
+Ngày giá không còn phải giống tuyệt đối trên toàn bộ universe. Hệ thống cho phép độ lệch tối đa 3 ngày. Mã quá cũ hoặc thiếu ngày được tải mới đúng một lần bằng cách bypass cache; nếu vẫn cũ thì chỉ mã đó bị loại, còn phần universe đủ mới tiếp tục được xếp hạng.
+
+Nếu quick screen không có đủ survivor nhưng vẫn có các mã đã tính được điểm kỹ thuật, các mã có điểm cao nhất được đưa vào phân tích sâu với tư cách ứng viên dự phòng. Chúng chỉ có thể lấp phần thiếu dưới nhãn `REFERENCE_ONLY`; dữ liệu `UNAVAILABLE` không bao giờ được tự động nâng thành ứng viên.
+
+### Fast recommendation profile
+
+Với câu hỏi chọn mã như `Tôi nên mua cổ phiếu nào hôm nay?`, hệ thống vẫn xếp hạng universe cấu hình 100 mã nhưng ưu tiên dữ liệu cache tối đa 3 ngày. Quick screen không refresh hàng loạt. Chỉ đúng số mã cần trả về được đưa qua full graph; các mã shortlist cũ quá 3 ngày mới bị bypass cache và tải lại. Full graph trong luồng batch đặt `max_iterations=0` và không gọi LLM planner cho từng Technical Agent. Intent `STOCK_RECOMMENDATION` có confidence từ 90% dùng thẳng typed deterministic route; Manager LLM chỉ sửa route mơ hồ và vẫn có thể tổng hợp kết quả một lần ở cuối.
 
 ## Thành phần đã triển khai
 
@@ -123,7 +131,7 @@ Nếu chỉ một bucket có đủ ứng viên, hệ thống dùng ứng viên c
 
 - Quét 100 mã phụ thuộc hạn mức và khả năng truy cập của data provider. Cache giúp giảm request nhưng không bảo đảm tránh rate limit.
 - Watchlist hiện tại không phải point-in-time universe, nên không dùng để tuyên bố hiệu suất backtest lịch sử.
-- “Đúng K” chỉ được bảo đảm khi có ít nhất K mã qua chính sách và dữ liệu đủ chất lượng.
+- “Đúng K” có thể gồm mã đạt chuẩn và mã `REFERENCE_ONLY`; số lượng từng loại luôn được công khai riêng.
 - LLM có thể hỗ trợ semantic parsing nhưng không quyết định điểm số, bucket hoặc trade action.
 - Không có broker connection hoặc tự động giao dịch.
 
