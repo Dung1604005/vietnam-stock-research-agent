@@ -6,6 +6,7 @@ import html
 
 from stock_multi_agent.models.chat import AssistantResponse, ResponseType
 from stock_multi_agent.services.chart_service import ChartService
+from stock_multi_agent.ui.interaction_panel import render_interaction_actions
 
 
 def render_user_message(content: str) -> None:
@@ -49,6 +50,7 @@ def render_assistant_message(response: AssistantResponse, chart_service: ChartSe
             render_agent_status(response)
             render_agent_trace(response)
         render_disclaimer(response)
+        render_interaction_actions(response, render_key)
         if response.source_details or response.tables or response.metadata.get('research_brief'):
             from stock_multi_agent.services.research_workbench import ResearchWorkbench
             key = render_key

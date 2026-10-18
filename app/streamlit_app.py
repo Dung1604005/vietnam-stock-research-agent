@@ -19,6 +19,10 @@ from stock_multi_agent.ui.components import render_assistant_message, render_use
 from stock_multi_agent.ui.styles import APP_CSS
 from stock_multi_agent.services.execution_profiles import execution_scope
 from stock_multi_agent.services.progress_events import ProgressSink
+from stock_multi_agent.ui.local_workspace_panel import render_local_workspace_panel
+from stock_multi_agent.services.browser_automation import open_response_actions
+from stock_multi_agent.services.navigation_request import navigation_response
+from stock_multi_agent.models.chat import ConversationMessage
 
 
 st.set_page_config(page_title="Stock Multi-Agent Assistant", page_icon="🤖", layout="wide")
@@ -103,6 +107,7 @@ with st.sidebar:
         help='STANDARD giữ cấu hình hiện hành. QUICK không gọi LLM. OFFLINE chỉ dùng KB/replay đã lưu, không gọi mạng.')
     offline_bundle_path = st.text_input('Replay bundle JSON trên ổ D', value='',
         disabled=execution_mode != 'OFFLINE', help='Tạo bằng scripts/capture_demo_bundle.py; không dùng snapshot chỉ có last bar.')
+    render_local_workspace_panel(conversation.active_tickers, execution_mode)
     with st.expander('Tình trạng hệ thống — kiểm tra local', expanded=False):
         from stock_multi_agent.services.runtime_health import runtime_health
         provider = service.analysis.data_agent.market_tool.provider
@@ -150,12 +155,25 @@ if st.session_state.get("pending_prompt"):
 if prompt:
     render_user_message(prompt)
     sink = ProgressSink()
+    def handle_request():
+        # Opening a known page is a navigation task, not financial analysis:
+        # no LLM or provider round trip is needed for these explicit requests.
+        direct = navigation_response(prompt, conversation)
+        if direct is not None:
+            direct.metadata['execution_profile'] = {'mode': execution_mode, 'external_allowed': execution_mode != 'OFFLINE'}
+            conversation.add_message(ConversationMessage(role=ChatRole.USER, content=prompt))
+            conversation.add_message(ConversationMessage(role=ChatRole.ASSISTANT, content=direct.message, response=direct))
+            if direct.tickers:
+                conversation.active_tickers = direct.tickers
+            if conversation.title == 'New conversation':
+                conversation.title = prompt[:60]
+            return direct
+        return service.handle(prompt, conversation, execution_mode=execution_mode,
+            progress_sink=sink, offline_bundle=offline_bundle_path.strip() or None)
     with st.status('Đang thực thi — hiển thị sự kiện từ tác vụ thực…', expanded=True) as status:
         live_progress = st.empty()
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix='stock-request') as executor:
-            future = executor.submit(copy_context().run, lambda: service.handle(prompt, conversation,
-                execution_mode=execution_mode, progress_sink=sink,
-                offline_bundle=offline_bundle_path.strip() or None))
+            future = executor.submit(copy_context().run, handle_request)
             while not future.done():
                 events = sink.snapshot()
                 if events:
@@ -174,6 +192,17 @@ if prompt:
         failed = [event for event in sink.snapshot() if event['status'] in {'FAILED', 'PARTIAL'}]
         status.update(label='Đã trả kết quả có giới hạn/fallback' if failed else 'Đã hoàn thành tác vụ',
             state='complete', expanded=False)
+    # Local OS navigation happens once after a new response, never while
+    # rendering old conversation messages or creating analysis plans.
+    context = getattr(st, 'context', None)
+    browser_host = context.headers.get('Host') if context is not None else None
+    response.metadata['browser_actions'] = open_response_actions(
+        response, prompt, state=st.session_state, host=browser_host,
+        execution_mode=execution_mode,
+        enabled=st.session_state.get('interaction_auto_open', True),
+        max_tabs=st.session_state.get('interaction_max_tabs', 3),
+        broker_url_template=st.session_state.get('interaction_broker_template') or None,
+        broker_name=st.session_state.get('interaction_broker_name') or 'VNDIRECT')
     store.save(conversation)
     st.session_state.conversations = store.items
     st.rerun()

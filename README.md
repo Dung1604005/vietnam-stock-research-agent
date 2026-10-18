@@ -4,6 +4,8 @@ An educational ChatGPT-like assistant for **Intelligent Agents and Multi-Agent S
 
 > Educational analysis only. This is not financial advice, an automated trading system, or a broker integration.
 
+Local-only interactions: [automatic browser navigation, reports, VNDIRECT links and personal watchlist](docs/local-interactions.md). Pages open after a new request without a link click; no login automation or trade execution. Run with `--server.address 127.0.0.1` on your own machine.
+
 Phase 6–8 engineering update: [implementation and training handoff](docs/phase-6-8-implementation.md), [Qwen3 Colab fine-tuning](docs/llm-finetuning-data-policy.md), [LSTM V3 model card](docs/lstm-v3-model-card.md), and [Quick/Deep/Offline demo runbook](docs/demo-runbook.md). V2 remains the default; new models are not approved merely because software tests pass.
 
 ## What the demo shows
