@@ -12,6 +12,7 @@ from stock_multi_agent.services.price_forecast import PriceForecastService
 from stock_multi_agent.services.agent_llm import AgentLLMAdvisor
 from stock_multi_agent.services.research_store import ResearchStore
 from stock_multi_agent.tools import FinancialToolkit, MarketDataTool, TechnicalIndicatorToolkit
+from stock_multi_agent.services.request_telemetry import current_metrics
 
 
 class AnalysisService:
@@ -30,10 +31,17 @@ class AnalysisService:
         technical_tools = TechnicalIndicatorToolkit()
         advisor = llm_advisor or AgentLLMAdvisor()
         self.data_agent = DataAgent(MarketDataTool(market_provider))
-        self.research_agent = ResearchAgent(research_store)
+        research_web = None
+        if isinstance(market_provider, VnstockMarketDataProvider):
+            from stock_multi_agent.services.research_orchestrator import ResearchOrchestrator
+            from stock_multi_agent.services.research_planner import ResearchPlanner
+            planner = ResearchPlanner()
+            planner.max_searches, planner.max_pages, planner.timeout_seconds = 1, 2, 8
+            research_web = ResearchOrchestrator(planner=planner)
+        self.research_agent = ResearchAgent(research_store, web_research=research_web, llm_advisor=advisor)
         self.technical_agent = TechnicalAgent(technical_tools, llm_advisor=advisor)
-        self.fundamental_agent = FundamentalAgent(FinancialToolkit())
-        self.risk_agent = RiskAgent(technical_tools)
+        self.fundamental_agent = FundamentalAgent(FinancialToolkit(), llm_advisor=advisor)
+        self.risk_agent = RiskAgent(technical_tools, llm_advisor=advisor)
         self.manager_agent = ManagerAgent(
             llm_advisor=advisor,
             llm_provider=advisor.provider,
@@ -137,6 +145,10 @@ class AnalysisService:
         allow_llm_planning: bool = True,
         force_data_refresh: bool = False,
     ) -> AgentState:
+        from stock_multi_agent.services.execution_profiles import current_profile
+        if current_profile().mode.value in {'QUICK', 'OFFLINE'}:
+            allow_llm_planning = False
+            max_iterations = 0
         return AgentState(
             ticker=symbol,
             investment_horizon=investment_horizon.strip(),
@@ -146,6 +158,7 @@ class AnalysisService:
             portfolio_positions=portfolio_positions or [],
             allow_llm_planning=allow_llm_planning,
             force_data_refresh=force_data_refresh,
+            **({"request_budget": current_metrics().budget.model_copy(deep=True)} if current_metrics() else {}),
         )
 
     @staticmethod

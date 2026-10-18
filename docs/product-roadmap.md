@@ -1,5 +1,7 @@
 # Product roadmap — AI Investment Research Assistant
 
+Cập nhật triển khai 18/10/2026: chương trình nâng cấp mới dùng phase 0–8, khác cách đặt tên A–G của roadmap gốc này. Xem [kế hoạch tổng thể](comprehensive-free-upgrade-plan.md) và [bàn giao Phase 6–8](phase-6-8-implementation.md) để biết trạng thái code, dataset V3 và notebook Qwen3; GPU training/human review/model promotion vẫn chờ nghiệm thu riêng.
+
 ## 1. Mục tiêu sản phẩm
 
 Phát triển MVP thành trợ lý nghiên cứu chứng khoán Việt Nam có thể trả lời câu hỏi, phân tích dữ liệu có cấu trúc, đọc tài liệu doanh nghiệp, so sánh luận điểm và trình bày evidence có thể kiểm tra. Sản phẩm hỗ trợ con người nghiên cứu; không đặt lệnh, không kết nối broker và không tự động quản lý danh mục.

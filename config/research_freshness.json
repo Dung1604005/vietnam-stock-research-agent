@@ -1,0 +1,14 @@
+{
+  "schema_version": "freshness-v1",
+  "note": "Application defaults, not regulatory reporting deadlines. Age is measured at question/as-of date, never at download date.",
+  "rules": {
+    "financial_statement": {"publication_days": 220, "period_days": 180, "require_period": true},
+    "annual_report": {"publication_days": 550, "period_days": 550, "require_period": true},
+    "earnings_release": {"publication_days": 180, "period_days": 240, "require_period": true},
+    "investor_presentation": {"publication_days": 180, "period_days": 240, "require_period": false},
+    "regulatory_disclosure": {"publication_days": 120, "period_days": 240, "require_period": false},
+    "news": {"publication_days": 30, "period_days": 90, "require_period": false},
+    "other": {"publication_days": 180, "period_days": 240, "require_period": false}
+  },
+  "annual_financial_period_days": 550
+}

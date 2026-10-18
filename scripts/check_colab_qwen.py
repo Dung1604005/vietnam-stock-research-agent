@@ -13,9 +13,12 @@ class ProbeOutput(BaseModel):
 
 def main() -> None:
     load_workspace_env()
-    provider = configured_semantic_provider()
+    configured = configured_semantic_provider()
+    provider = getattr(configured, 'provider', configured)
     if not isinstance(provider, ColabQwenProvider):
         raise SystemExit("STOCK_AGENT_LLM_PROVIDER phải là colab_qwen.")
+    health = provider.check_health()
+    print(f"Endpoint đúng model: {health['model']} · revision={health.get('model_revision', '')} · adapter={health.get('adapter_mode', 'UNDECLARED')}")
     result = provider.parse_structured(
         "Trả đúng JSON schema, không thêm nội dung khác.",
         {"task": "Xác nhận endpoint hoạt động", "required_status": "OK", "required_language": "vi"},

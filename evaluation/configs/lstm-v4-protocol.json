@@ -1,0 +1,33 @@
+{
+  "schema_version": "lstm-v4-protocol-1",
+  "protocol_id": "one-session-priority-v4-2026-10-18",
+  "frozen_at": "2026-10-18T03:39:33+00:00",
+  "registration_note": "Designed after reviewing V3 historical results. All historical folds are development-only; no claim of a new independent holdout.",
+  "feature_version": "single-ticker-v4-1",
+  "window": 30,
+  "horizons": [1, 5],
+  "outer_folds": 3,
+  "seeds": [42, 123],
+  "gap_sessions": 5,
+  "minimum_eligible_sessions": {"train": 120, "validation": 30, "calibration": 30, "test": 40},
+  "primary_metric": "raw_return_mae_horizon_1",
+  "selection": "raw one-session validation MAE only; no test-based seed or checkpoint selection",
+  "architecture": "LSTM32 plus last-observation skip, Dense32, separate 1/5 return heads and 3-class direction head",
+  "training": {
+    "epochs": 35, "learning_rate": 0.0003, "batch_size": 256,
+    "huber_delta": 0.5, "loss_weights": {"return_1": 1.0, "return_5": 0.35, "direction_1": 0.15},
+    "volatility_floor": 0.005, "volatility_ceiling": 0.1,
+    "training_target_clip": 8.0, "dropout": 0.1, "l2": 0.00001,
+    "early_stopping_patience": 7
+  },
+  "calibration": {"alpha_grid": [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0], "flat_threshold_grid": [null,0.5,0.65,0.8], "fit_fraction": 0.65, "interval_quantile": 0.9, "purge_fit_labels_before_interval": true},
+  "bootstrap": {"block_sessions": 5, "repetitions": 500, "confidence": 0.95},
+  "gate": {
+    "minimum_outer_folds": 3, "minimum_winning_folds": 2,
+    "max_relative_loss_vs_ridge_tree": 0.01, "minimum_forward_sessions": 40,
+    "require_adjusted_prices_for_blend": true, "maximum_technical_weight": 0.2
+  },
+  "default_policy": "EXPERIMENTAL_SHADOW_ZERO_WEIGHT_NO_AUTO_INTEGRATION",
+  "ablation": "Optional regression_only variant has direction loss weight 0; register output separately and do not choose a winner using outer test.",
+  "limitations": ["Current source universe is not point-in-time", "Adjusted-price and price-unit status remain UNKNOWN unless source evidence verifies them", "No headline accuracy threshold or baseline gate was relaxed to force a pass"]
+}

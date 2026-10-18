@@ -80,6 +80,8 @@ class VnstockInstrumentUniverseProvider:
         cached = self.cache.get(self.cache_ttl_seconds)
         if cached is not None:
             return cached
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('market.universe_fetch')
         try:
             from vnstock.api.listing import Listing
 

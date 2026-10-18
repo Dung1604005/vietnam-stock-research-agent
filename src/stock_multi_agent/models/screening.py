@@ -53,6 +53,8 @@ class ScreenSpec(BaseModel):
 
     universe_key: str = Field(pattern=r"^[a-z0-9_]+$")
     as_of: date | None = None
+    filters: dict[str, float] = Field(default_factory=dict)
+    exchange: str | None = None
     maximum_candidates: int = Field(default=100, ge=1, le=100)
     minimum_technical_score: float = Field(default=4.0, ge=0, le=10)
     eligible_signals: list[Signal] = Field(default_factory=lambda: [Signal.BUY, Signal.HOLD])
@@ -132,7 +134,7 @@ class DualRecommendation(BaseModel):
 class ComparisonSpec(BaseModel):
     """Field-alignment policy for an explicitly named comparison set."""
 
-    tickers: list[str] = Field(min_length=2, max_length=4)
+    tickers: list[str] = Field(min_length=2, max_length=5)
     require_same_currency: bool = True
     require_same_price_as_of: bool = True
     require_same_financial_period: bool = True

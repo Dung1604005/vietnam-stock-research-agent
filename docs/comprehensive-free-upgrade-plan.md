@@ -1,5 +1,26 @@
 # Kế hoạch nâng cấp toàn diện hệ thống Multi-Agent (ưu tiên công cụ miễn phí)
 
+Theo dõi triển khai ba phase đầu (0–2): [phase-0-2-upgrade-implementation.md](phase-0-2-upgrade-implementation.md). Tài liệu này phân biệt phần code đã có, synthetic regression và các gate thực tế chưa đo.
+
+Cập nhật 18/10/2026:
+
+| Phase | Trạng thái |
+|---|---|
+| 0–2 | [x] Hoàn thành triển khai; giữ riêng các acceptance gate độc lập/chưa đo |
+| 3 | Đã triển khai KB/KG V2, provenance ledger và projection; Graph-RAG opt-in, chờ relational holdout |
+| 4 | Đã triển khai gateway/role capabilities/validation; chờ kiểm chứng LLM và P95 Colab thực |
+| 5 | Đã triển khai công cụ/chat/report/cache; chờ đo chất lượng và P95 trên data thực |
+| 6 | Đã có builder/dataset V3 riêng, feature parity, walk-forward/baselines/registry/shadow; chưa train GPU hoặc qua forward gate, giữ V2 |
+| 7 | Đã có notebook Qwen3-4B QLoRA Colab, curation/grouped splits/A-B/adapter registry; chờ human-reviewed data và GPU training/evaluation |
+| 8 | Đã triển khai Quick/Deep/Offline, progress thật, replay có checksum, audit export và local health; đã kiểm thử offline/UI, chờ rehearsal/latency live |
+
+Chi tiết code, cách chạy và phần chưa nghiệm thu:
+[phase-3-5-upgrade-implementation.md](phase-3-5-upgrade-implementation.md).
+
+Kế hoạch chi tiết Phase 6–8 sau khảo sát bởi ba subagent ChatGPT:
+[phase-6-8-execution-plan.md](phase-6-8-execution-plan.md).
+Code Phase 6–8 đã triển khai; **chưa train hoặc promote model mới**. Notebook dùng `Qwen/Qwen3-4B-Instruct-2507` theo lựa chọn mới, không thay V2. Xem [phase-6-8-implementation.md](phase-6-8-implementation.md) để lấy dataset, chạy Colab và phân biệt các gate còn chờ.
+
 ## 1. Mục tiêu và phạm vi
 
 Kế hoạch này nâng cấp hệ thống hiện tại thành một **AI Investment Research Assistant** có thể:
@@ -140,7 +161,11 @@ Không cần tạo sáu mô hình riêng. Nên dùng **một base model Qwen2.5-
 
 Thời lượng dưới đây là ước lượng cho một người làm bán thời gian. Mỗi phase chỉ bắt đầu khi phase trước có baseline và tiêu chí đo.
 
-### Phase 0 — Baseline, contracts và evaluation gate (1–2 tuần)
+### Phase 0 — Baseline, contracts và evaluation gate (1–2 tuần) — [x] Hoàn thành triển khai
+
+Trạng thái 17/10/2026: đã triển khai contracts, telemetry, budgets và benchmark.
+Kết quả synthetic regression và các chỉ tiêu độc lập chưa đo được phân biệt tại
+[báo cáo Phase 0–2](phase-0-2-upgrade-implementation.md); không coi test synthetic là holdout độc lập.
 
 **Vấn đề:** Không thể biết nâng cấp có tốt hơn nếu thiếu benchmark thống nhất.
 
@@ -168,7 +193,10 @@ Thời lượng dưới đây là ước lượng cho một người làm bán t
 - có baseline accuracy/latency/citation trước khi nâng cấp;
 - test cũ vẫn qua.
 
-### Phase 1 — Nâng cấp NLU và Manager typed planning (2–3 tuần)
+### Phase 1 — Nâng cấp NLU và Manager typed planning (2–3 tuần) — [x] Hoàn thành triển khai
+
+Đã triển khai NLU/context/cache, intent mở rộng và typed DAG có validation.
+Các ngưỡng accuracy trên holdout người dùng độc lập vẫn cần đo riêng.
 
 **Vấn đề:** Câu hỏi tương đương có thể route khác nhau; số lượng, horizon và mục tiêu dễ bị bỏ sót.
 
@@ -194,7 +222,11 @@ Thời lượng dưới đây là ước lượng cho một người làm bán t
 - không gọi stock pipeline cho câu hỏi lý thuyết;
 - request đơn giản chỉ dùng parser deterministic và hoàn thành dưới 2 giây, không tính I/O mạng.
 
-### Phase 2 — RAG V2: ingest, hybrid retrieval và evidence-grounded answer (3–4 tuần)
+### Phase 2 — RAG V2: ingest, hybrid retrieval và evidence-grounded answer (3–4 tuần) — [x] Hoàn thành triển khai
+
+Đã triển khai ingest/version/dedupe, hybrid retrieval, grounded synthesis,
+crawler/scheduler và nhận diện kỳ dữ liệu/freshness. E5 là tùy chọn; chưa tuyên bố
+đạt citation precision trên corpus thực hoặc thắng A/B khi chưa đo.
 
 **Vấn đề:** Corpus nhỏ và retrieval chưa đủ tin cậy cho câu hỏi doanh nghiệp đa dạng.
 
@@ -239,6 +271,10 @@ Thời lượng dưới đây là ước lượng cho một người làm bán t
 - câu hỏi không có tài liệu không được tạo citation giả.
 
 ### Phase 3 — Knowledge Base và Knowledge Graph V2 (2–3 tuần)
+
+Tiến độ bổ sung: phần code Phase 3–5 và đợt sửa 7 hạn chế được mô tả trong
+[phase-3-5-reliability-remediation.md](phase-3-5-reliability-remediation.md).
+Các gate relational holdout, chất lượng nhận định thực tế và latency Colab vẫn cần đo riêng.
 
 **Vấn đề:** Các loại tri thức đang dễ bị trộn và KG có nguy cơ trở thành công nghệ trang trí.
 
@@ -396,7 +432,7 @@ Thời lượng dưới đây là ước lượng cho một người làm bán t
 1. Thu thập log đã loại secret/PII; không dùng output lỗi làm nhãn.
 2. Tạo 500–2.000 ví dụ chất lượng cao, ưu tiên con người kiểm tra hơn số lượng.
 3. Chia train/validation/test theo template, công ty và thời gian để tránh leakage.
-4. Dùng QLoRA/PEFT trên Qwen2.5-3B-Instruct bằng Kaggle T4/Colab.
+4. Dùng QLoRA/PEFT trên Qwen2.5-3B-Instruct bằng Kaggle T4/ google Colab.
 5. Lưu adapter, tokenizer, base-model revision, config, seed và evaluation report.
 6. A/B với prompt-only baseline.
 

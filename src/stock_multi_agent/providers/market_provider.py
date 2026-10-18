@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import os
 import sys
@@ -47,7 +48,7 @@ class MarketDataProvider(Protocol):
 class VnstockMarketDataProvider:
     """Real Vietnamese market data via vnstock 4.x's unified stock API."""
 
-    SCHEMA_VERSION = "vnstock-4-normalized-v6"
+    SCHEMA_VERSION = "vnstock-4-normalized-v7-financial-history"
 
     def __init__(
         self,
@@ -100,10 +101,17 @@ class VnstockMarketDataProvider:
             cached = self.cache.get(cache_key)
             if cached is not None:
                 self.cache_hits += 1
+                from stock_multi_agent.services.request_telemetry import current_metrics
+                metrics = current_metrics()
+                if metrics:
+                    metrics.cache_hits += 1
                 result = self._apply_quality(cached, include_financials)
+                result.access_mode = 'CACHE'
                 self.last_success_at = datetime.now(timezone.utc)
                 return result
         self.cache_misses += 1
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('market_provider.fetch')
         try:
             from vnstock.api.financial import Finance
             from vnstock.api.quote import Quote
@@ -253,6 +261,7 @@ class VnstockMarketDataProvider:
             ticker=symbol,
             instrument=instrument,
             source=f"vnstock:{quote_source}",
+            access_mode='LIVE_FETCH',
             company_name=company_name,
             bars=bars,
             financials=financials,
@@ -277,6 +286,8 @@ class VnstockMarketDataProvider:
     def refresh_market_data(self, ticker: str, include_financials: bool = True) -> MarketData:
         """Bypass only this instrument's cache before one bounded recovery attempt."""
         symbol = ticker.strip().upper()
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('market_provider.refresh')
         if self.cache is not None:
             self.cache.delete(self._cache_key(symbol, include_financials))
         return self.get_market_data(symbol, include_financials=include_financials)
@@ -588,10 +599,33 @@ class VnstockMarketDataProvider:
             index for index, column in enumerate(frame.columns)
             if cls._period_end(str(column)) is not None
         ]
-        if not statement_aliases or not identity_indexes or not value_indexes:
+        if not statement_aliases:
             return []
+        if not identity_indexes or not value_indexes:
+            # Some provider versions return one record per reporting period.
+            # Support declared metadata columns instead of assuming row 0 is latest.
+            observations = []
+            for row_index in range(frame.shape[0]):
+                row = frame.iloc[row_index]
+                period_label, period_end = cls._record_financial_period(row)
+                if period_end is None:
+                    continue
+                for column, raw_value in row.items():
+                    key = cls._key(str(column))
+                    metric = next((candidate for candidate, needles in statement_aliases.items()
+                        if key in {cls._key(needle) for needle in needles}), None)
+                    value = pd.to_numeric(raw_value, errors='coerce')
+                    if metric is None or pd.isna(value) or not math.isfinite(float(value)):
+                        continue
+                    row_frequency = 'quarter' if period_label.startswith('Q') else frequency
+                    metadata = cls._financial_frame_metadata(frame, row_frequency)
+                    unit = metadata.pop('unit', 'currency')
+                    observations.append(FinancialStatementObservation(statement=statement, metric=metric,
+                        value=float(value), unit=unit, period_label=period_label, period_end=period_end,
+                        frequency=row_frequency, source_id=source_id, **metadata))
+            return sorted(observations, key=lambda item: (item.metric, item.period_end or date.min))
         observations: list[FinancialStatementObservation] = []
-        seen: set[tuple[str, date | None]] = set()
+        seen: set[tuple[str, date | None, float]] = set()
         for row_index in range(frame.shape[0]):
             identity = " ".join(str(frame.iloc[row_index, index]) for index in identity_indexes)
             identity_key = cls._key(identity)
@@ -605,12 +639,17 @@ class VnstockMarketDataProvider:
                 value = pd.to_numeric(frame.iloc[row_index, value_index], errors="coerce")
                 period_label = str(frame.columns[value_index])
                 period_end = cls._period_end(period_label)
-                if pd.isna(value) or period_end is None or (metric, period_end) in seen:
+                if pd.isna(value) or not math.isfinite(float(value)) or period_end is None or (metric, period_end, float(value)) in seen:
                     continue
-                seen.add((metric, period_end))
+                seen.add((metric, period_end, float(value)))
+                metadata = cls._financial_frame_metadata(frame, frequency)
+                unit_index = columns_by_key.get('unit')
+                unit = str(frame.iloc[row_index, unit_index]) if unit_index is not None and pd.notna(frame.iloc[row_index, unit_index]) else metadata.pop('unit', 'currency')
+                metadata.pop('unit', None)
                 observations.append(FinancialStatementObservation(
-                    statement=statement, metric=metric, value=float(value), unit="currency",
+                    statement=statement, metric=metric, value=float(value), unit=unit,
                     period_label=period_label, period_end=period_end, frequency=frequency, source_id=source_id,
+                    **metadata,
                 ))
         return sorted(observations, key=lambda item: (item.metric, item.period_end or date.min))
 
@@ -627,7 +666,8 @@ class VnstockMarketDataProvider:
     ) -> tuple[FinancialMetrics, list[FinancialMetricObservation]]:
         if not isinstance(frame, pd.DataFrame) or frame.empty:
             return FinancialMetrics(), []
-        flat: dict[str, tuple[float, str]] = {}
+        flat: dict[str, list[tuple[float, str]]] = {}
+        percentage_keys: set[str] = set()
 
         # vnstock 4.x VCI commonly returns a report-oriented frame: metrics
         # are rows (`item_id`) and periods are duplicate-labelled columns.
@@ -640,30 +680,35 @@ class VnstockMarketDataProvider:
             for row_index in range(frame.shape[0]):
                 identity = str(frame.iloc[row_index, id_index])
                 display = str(frame.iloc[row_index, name_index]) if name_index is not None else ""
+                if '%' in display or 'percent' in display.casefold():
+                    percentage_keys.add(cls._key(f'{identity} {display}'))
                 candidates: list[tuple[float, str, int]] = []
                 for value_index in value_indexes:
                     numeric = pd.to_numeric(frame.iloc[row_index, value_index], errors="coerce")
                     if pd.notna(numeric):
                         candidates.append((float(numeric), str(frame.columns[value_index]), value_index))
                 if candidates:
-                    selected = max(
-                        candidates,
-                        key=lambda item: (cls._period_end(item[1]) or date.min, item[2]),
-                    )
-                    flat[cls._key(f"{identity} {display}")] = (selected[0], selected[1])
+                    ordered = sorted(candidates, key=lambda item: (cls._period_end(item[1]) or date.min, item[2]), reverse=True)
+                    flat[cls._key(f"{identity} {display}")] = [(value, label) for value, label, _ in ordered]
         else:
             # Also support record-oriented frames returned by other sources.
-            latest = frame.iloc[0]
-            for column, value in latest.items():
-                key = " ".join(str(part) for part in column) if isinstance(column, tuple) else str(column)
-                numeric = pd.to_numeric(value, errors="coerce")
-                if pd.notna(numeric):
-                    flat[cls._key(key)] = (float(numeric), "latest")
+            for row_index in range(frame.shape[0]):
+                row = frame.iloc[row_index]
+                label, _ = cls._record_financial_period(row)
+                for column, value in row.items():
+                    key = " ".join(str(part) for part in column) if isinstance(column, tuple) else str(column)
+                    numeric = pd.to_numeric(value, errors="coerce")
+                    if pd.notna(numeric) and math.isfinite(float(numeric)):
+                        flat.setdefault(cls._key(key), []).append((float(numeric), label))
+                        if '%' in key or 'percent' in key.casefold():
+                            percentage_keys.add(cls._key(key))
+            for items in flat.values():
+                items.sort(key=lambda item: cls._period_end(item[1]) or date.min, reverse=True)
 
-        def pick(*needles: str) -> tuple[float, str] | None:
+        def pick(*needles: str) -> tuple[str, list[tuple[float, str]]] | None:
             for key, observation in flat.items():
                 if any(cls._key(needle) in key for needle in needles):
-                    return observation
+                    return key, observation
             return None
 
         definitions = {
@@ -674,7 +719,7 @@ class VnstockMarketDataProvider:
             "pb": (("pb_ratio", "price to book"), "multiple", False),
             "roe": (("roe",), "ratio", True),
             "roa": (("roa",), "ratio", True),
-            "debt_to_equity": (("debtequity", "debttoequity"), "ratio", True),
+            "debt_to_equity": (("debtequity", "debttoequity"), "ratio", False),
             "operating_cash_flow": (("operatingcashflow", "cashflowfromoperating"), "currency", False),
             "profit_margin": (("netprofitmargin", "profitmargin"), "ratio", True),
         }
@@ -685,18 +730,68 @@ class VnstockMarketDataProvider:
             if selected is None:
                 normalized[metric] = None
                 continue
-            raw_value, period_label = selected
-            value = cls._as_ratio(raw_value) if is_ratio else raw_value
-            normalized[metric] = value
-            observations.append(FinancialMetricObservation(
-                metric=metric,
-                value=value,
-                unit=unit,
-                period_label=period_label,
-                period_end=cls._period_end(period_label),
-                source_id=source_id,
-            ))
+            key, history = selected
+            normalized[metric] = None
+            seen_values = set()
+            for history_index, (raw_value, period_label) in enumerate(history):
+                # Explicit percentages alone justify /100. Ambiguous scale is
+                # preserved in history and excluded from the aggregate score.
+                explicitly_percent = unit == 'ratio' and (key in percentage_keys or frame.attrs.get('ratio_format') == 'percent')
+                value = raw_value / 100 if explicitly_percent else raw_value
+                ambiguous_scale = is_ratio and not explicitly_percent and frame.attrs.get('ratio_format') != 'decimal' and abs(raw_value) > 2
+                if history_index == 0:
+                    normalized[metric] = None if ambiguous_scale else value
+                if (period_label, value) in seen_values:
+                    continue
+                seen_values.add((period_label, value))
+                frequency = 'quarter' if re.search(r'(?:q|quarter)\s*[1-4]', period_label, re.I) else 'annual'
+                metadata = cls._financial_frame_metadata(frame, frequency)
+                metadata.pop('unit', None)
+                if 'reporting_basis' not in frame.attrs:
+                    metadata['reporting_basis'] = 'UNKNOWN'  # ratios may use TTM even in annual-labelled columns
+                observation_unit = 'unknown_ratio' if ambiguous_scale else unit
+                observation_value = raw_value if observation_unit == 'unknown_ratio' else value
+                observations.append(FinancialMetricObservation(metric=metric, value=observation_value, unit=observation_unit,
+                    period_label=period_label, period_end=cls._period_end(period_label), source_id=source_id,
+                    frequency=frequency,
+                    **metadata))
         return FinancialMetrics(**normalized), observations
+
+    @staticmethod
+    def _financial_frame_metadata(frame, frequency):
+        """Only retain explicit source declarations; endpoint year declares annual, not consolidation."""
+        attrs = getattr(frame, 'attrs', {})
+        allowed = {'currency', 'scale', 'period_start', 'reporting_basis', 'consolidation', 'assurance', 'unit'}
+        metadata = {key: value for key, value in attrs.items() if key in allowed and value is not None}
+        if frequency == 'annual':
+            metadata.setdefault('reporting_basis', 'ANNUAL')
+        return metadata
+
+    @classmethod
+    def _record_financial_period(cls, row):
+        fields = {cls._key(' '.join(map(str, key)) if isinstance(key, tuple) else str(key)): value for key, value in row.items()}
+        for key in ('periodend', 'reportdate', 'enddate', 'date'):
+            if key in fields and pd.notna(fields[key]):
+                try:
+                    value = pd.Timestamp(fields[key]).date()
+                    return value.isoformat(), value
+                except (ValueError, TypeError):
+                    pass
+        year = next((value for key, value in fields.items() if key.endswith(('yearreport', 'reportyear')) or key == 'year'), None)
+        if year is None or pd.isna(year):
+            return 'latest', None
+        try:
+            year = int(year)
+            if not 2000 <= year <= 2100:
+                return 'latest', None
+            quarter = next((value for key, value in fields.items() if key.endswith(('quarter', 'lengthreport'))), None)
+            if quarter is not None and pd.notna(quarter) and int(quarter) in (1, 2, 3, 4):
+                label = f'Q{int(quarter)} {year}'
+            else:
+                label = str(year)
+            return label, cls._period_end(label)
+        except (ValueError, TypeError, OverflowError):
+            return 'latest', None
 
     @staticmethod
     def _key(value: str) -> str:
@@ -726,6 +821,12 @@ class VnstockMarketDataProvider:
 
     @staticmethod
     def _period_end(label: str) -> date | None:
+        exact = re.search(r'\b(20\d{2})-(\d{2})-(\d{2})\b', label)
+        if exact:
+            try:
+                return date(*map(int, exact.groups()))
+            except ValueError:
+                return None
         year_match = re.search(r"\b(20\d{2})\b", label)
         if not year_match:
             return None

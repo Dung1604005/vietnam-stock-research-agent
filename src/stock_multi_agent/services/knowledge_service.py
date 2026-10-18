@@ -27,7 +27,10 @@ class KnowledgeService:
         self.graph_sync_status: dict[str, int | str | bool] = {"available": False, "documents": 0}
         if bootstrap and self.enabled:
             self.ensure_seeded()
-            self.graph_sync_status = self.store.sync_knowledge_graph()
+            # Startup/readiness must not perform optional network connections.
+            # Explicit sync remains available through the existing CLI/library.
+            if os.getenv('STOCK_AGENT_KNOWLEDGE_GRAPH_SYNC_ON_STARTUP', 'false').lower() == 'true':
+                self.graph_sync_status = self.store.sync_knowledge_graph()
 
     def ensure_seeded(self) -> None:
         if self.store.count_documents() or not self.seed_manifest.is_file():
@@ -78,7 +81,7 @@ class KnowledgeService:
                 for relation, label in zip(path.relations, path.labels[1:]):
                     parts.extend([f"--{relation.value}-->", label])
                 relation_lines.append(f"- {' '.join(parts)}")
-            sections.append("#### Quan hệ từ Knowledge Graph (Neo4j)\n\n" + "\n".join(relation_lines))
+            sections.append("#### Quan hệ từ Knowledge Graph\n\n" + "\n".join(relation_lines))
 
         source_lines = []
         warnings: list[str] = []

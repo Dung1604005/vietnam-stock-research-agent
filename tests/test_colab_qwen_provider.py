@@ -63,7 +63,9 @@ def test_configured_provider_selects_colab_qwen(monkeypatch) -> None:
     monkeypatch.setenv("COLAB_QWEN_BASE_URL", "https://demo.trycloudflare.com")
     monkeypatch.setenv("COLAB_QWEN_API_TOKEN", "test-token")
     provider = configured_semantic_provider()
-    assert isinstance(provider, ColabQwenProvider)
+    from stock_multi_agent.services.llm_gateway import LLMGateway
+    assert isinstance(provider, LLMGateway)
+    assert isinstance(provider.provider, ColabQwenProvider)
 
 
 def test_missing_colab_credentials_fail_only_when_called() -> None:

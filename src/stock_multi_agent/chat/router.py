@@ -21,6 +21,8 @@ class RouteStep(str, Enum):
     RESEARCH = "RESEARCH"
     KNOWLEDGE = "KNOWLEDGE"
     CHAT = "CHAT"
+    FORECAST = "FORECAST"
+    WORKBENCH = "WORKBENCH"
 
 
 class RoutingTask(BaseModel):
@@ -37,9 +39,11 @@ class RoutingTask(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list, min_length=1)
     timeout_seconds: int = Field(ge=1, le=120)
     budget_units: int = Field(ge=0, le=10)
+    completion_condition: str = "All expected_outputs are present and schema-valid."
 
 
 class RoutingPlan(BaseModel):
+    schema_version: str = "task-plan-v1"
     intent: QueryIntent
     tasks: list[RoutingTask] = Field(min_length=1, max_length=10)
     reason: str
@@ -59,6 +63,11 @@ class RoutingPlanValidationError(ValueError):
     pass
 
 
+# Public contract names reuse the established models instead of duplicating schemas.
+UserIntent = ParsedQuery
+TaskPlan = RoutingPlan
+
+
 class RoutingPlanValidator:
     """Deterministic safety boundary between semantic parsing and execution."""
 
@@ -74,7 +83,7 @@ class RoutingPlanValidator:
         if plan.total_budget_units > cls.max_total_budget_units:
             errors.append("Task plan exceeds the bounded execution budget.")
 
-        available_inputs = {"user_message"}
+        available_inputs = {"user_message", "research_query"}
         if query.tickers:
             available_inputs.add("ticker")
         if len(query.tickers) >= 2:
@@ -127,6 +136,8 @@ class IntentRouter:
         RouteStep.RESEARCH: (["research_query"], ["evidence_bundle"], 20, 2),
         RouteStep.KNOWLEDGE: (["user_message"], ["knowledge_evidence"], 10, 1),
         RouteStep.CHAT: (["user_message"], ["chat_response"], 5, 0),
+        RouteStep.FORECAST: (["market_data"], ["price_forecast"], 30, 2),
+        RouteStep.WORKBENCH: (["user_message"], ["research_tool_result"], 120, 3),
     }
 
     def plan(self, query: ParsedQuery, context: ConversationState | None = None) -> RoutingPlan:
@@ -161,6 +172,17 @@ class IntentRouter:
             QueryIntent.STOCK_CHART: [RouteStep.DATA, RouteStep.CHART],
             QueryIntent.INDICATOR_QUERY: [RouteStep.DATA, RouteStep.TECHNICAL],
             QueryIntent.RESEARCH: [RouteStep.RESEARCH],
+            QueryIntent.DOCUMENT_QA: [RouteStep.RESEARCH],
+            QueryIntent.THESIS_REVIEW: [RouteStep.RESEARCH, RouteStep.WORKBENCH],
+            QueryIntent.SOURCE_REQUEST: [RouteStep.RESEARCH],
+            QueryIntent.FORECAST: [RouteStep.DATA, RouteStep.FORECAST],
+            QueryIntent.PORTFOLIO_RISK: [RouteStep.WORKBENCH],
+            QueryIntent.EVENT_IMPACT: [RouteStep.WORKBENCH],
+            QueryIntent.CHANGE_EXPLANATION: [RouteStep.WORKBENCH],
+            QueryIntent.REPORT_CHANGE: [RouteStep.WORKBENCH],
+            QueryIntent.PEER_COMPARISON: [RouteStep.WORKBENCH],
+            QueryIntent.SCENARIO_ANALYSIS: [RouteStep.WORKBENCH],
+            QueryIntent.REPORT_EXPORT: [RouteStep.WORKBENCH],
             QueryIntent.THEORY: [RouteStep.KNOWLEDGE],
             QueryIntent.CURRENT_RULE: [RouteStep.KNOWLEDGE],
             QueryIntent.MIXED: [RouteStep.KNOWLEDGE, RouteStep.DATA, RouteStep.FUNDAMENTAL],
@@ -170,16 +192,21 @@ class IntentRouter:
             QueryIntent.UNKNOWN: [RouteStep.CHAT],
         }
         steps = list(routes.get(intent, [RouteStep.CHAT]))
+        if intent == QueryIntent.EXPLANATION and query.tickers:
+            steps = [RouteStep.DATA, RouteStep.TECHNICAL, RouteStep.FUNDAMENTAL, RouteStep.RISK, RouteStep.MANAGER]
         fundamental_indicators = {"PE", "PB", "ROE", "ROA", "EPS"}
         if intent == QueryIntent.INDICATOR_QUERY and fundamental_indicators.intersection(query.requested_indicators):
             steps = [RouteStep.DATA, RouteStep.FUNDAMENTAL]
         if intent == QueryIntent.MIXED and query.requested_indicators and not fundamental_indicators.intersection(query.requested_indicators):
             steps = [RouteStep.KNOWLEDGE, RouteStep.DATA, RouteStep.TECHNICAL]
         secondary_routes = {
+            QueryIntent.TECHNICAL_ANALYSIS: [RouteStep.TECHNICAL],
             QueryIntent.STOCK_CHART: [RouteStep.CHART],
             QueryIntent.INDICATOR_QUERY: [RouteStep.TECHNICAL],
             QueryIntent.RISK_ANALYSIS: [RouteStep.RISK],
             QueryIntent.FUNDAMENTAL_ANALYSIS: [RouteStep.FUNDAMENTAL],
+            QueryIntent.RESEARCH: [RouteStep.RESEARCH],
+            QueryIntent.DOCUMENT_QA: [RouteStep.RESEARCH],
         }
         for secondary in query.secondary_intents:
             for step in secondary_routes.get(secondary, []):
@@ -191,14 +218,17 @@ class IntentRouter:
     @staticmethod
     def _with_required_steps(steps: list[RouteStep]) -> list[RouteStep]:
         """Expand a selected specialist only when its deterministic inputs need it."""
-        result = list(steps)
-        if RouteStep.RISK not in result:
-            return result
-        risk_index = result.index(RouteStep.RISK)
-        for requirement in (RouteStep.DATA, RouteStep.TECHNICAL, RouteStep.FUNDAMENTAL):
-            if requirement not in result:
-                result.insert(risk_index, requirement)
-                risk_index += 1
+        result: list[RouteStep] = []
+        prerequisites = {RouteStep.TECHNICAL: [RouteStep.DATA], RouteStep.FUNDAMENTAL: [RouteStep.DATA],
+            RouteStep.FORECAST: [RouteStep.DATA], RouteStep.CHART: [RouteStep.DATA],
+            RouteStep.RISK: [RouteStep.DATA, RouteStep.TECHNICAL, RouteStep.FUNDAMENTAL]}
+        def add(step):
+            for requirement in prerequisites.get(step, []):
+                add(requirement)
+            if step not in result:
+                result.append(step)
+        for step in steps:
+            add(step)
         return result
 
     def _validated_plan(self, intent: QueryIntent, steps: list[RouteStep], query: ParsedQuery, reason: str) -> RoutingPlan:
@@ -223,6 +253,8 @@ class IntentRouter:
                 task_inputs = ["tickers"]
                 expected = ["market_data", "market_data_collection"]
             elif step == RouteStep.TECHNICAL:
+                dependencies = [task_by_step[RouteStep.DATA]]
+            elif step == RouteStep.FORECAST:
                 dependencies = [task_by_step[RouteStep.DATA]]
             elif step == RouteStep.FUNDAMENTAL:
                 dependencies = [task_by_step[RouteStep.DATA]]

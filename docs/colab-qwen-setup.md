@@ -1,5 +1,7 @@
 # Qwen2.5-3B-Instruct trên Google Colab
 
+> Cấu hình mới dùng Qwen3: xem [hướng dẫn Qwen3 cho các agent](qwen3-agent-setup.md) và `notebooks/serve_qwen3_4b_colab.ipynb`. Tài liệu bên dưới dành cho endpoint Qwen2.5 cũ, không tự nạp adapter Qwen3. Colab Free có giới hạn hosting/web UI; không mặc định bảo đảm endpoint bên ngoài được phép hoặc luôn sẵn sàng.
+
 Project dùng một Qwen endpoint do chính notebook Colab tạo ra. Không cần Ollama local và không cần API LLM trả phí. Colab chỉ cung cấp inference; Python trong project vẫn tính chỉ báo, điểm số, LSTM forecast, risk veto và quyết định cuối cùng.
 
 ## Thiết lập

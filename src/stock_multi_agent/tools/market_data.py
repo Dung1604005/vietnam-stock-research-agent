@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from stock_multi_agent.models.analysis import MarketData
 from stock_multi_agent.providers.market_provider import MarketDataProvider
+from stock_multi_agent.services.request_telemetry import observed
 
 
 class MarketDataTool:
@@ -10,6 +11,7 @@ class MarketDataTool:
     def __init__(self, provider: MarketDataProvider) -> None:
         self.provider = provider
 
+    @observed("market.get_stock_data", "tool")
     def get_stock_data(
         self,
         ticker: str,

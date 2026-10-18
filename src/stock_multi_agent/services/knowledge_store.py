@@ -491,7 +491,14 @@ class KnowledgeStore:
         return records
 
     def sync_knowledge_graph(self, *, rebuild: bool = False) -> dict[str, int | str | bool]:
-        return self.knowledge_graph.sync(self.graph_records(), rebuild=rebuild)
+        records = self.graph_records()
+        from stock_multi_agent.services.graph_v2 import InvestmentGraph
+        graph = InvestmentGraph(self.database_path)
+        for record in records:
+            graph.ingest_document(self.get_document(record['document_id']), record['chunks'])
+        result = self.knowledge_graph.sync(records, rebuild=rebuild)
+        result['sqlite_v2_edges'] = graph.stats()['edges']
+        return result
 
     def search(self, query: str, limit: int = 5, topics: list[str] | None = None) -> KnowledgeSearchResult:
         cleaned = re.sub(r"\s+", " ", query).strip()
@@ -505,6 +512,9 @@ class KnowledgeStore:
             return KnowledgeSearchResult(query=query, retrieval_note="No searchable knowledge terms were found.")
 
         graph_context = self.knowledge_graph.expand(cleaned, max_hops=2, limit=max(20, limit * 5))
+        if os.getenv('STOCK_AGENT_GRAPH_RAG_V2_ENABLED', 'false').lower() in {'true', '1', 'on'}:
+            from stock_multi_agent.services.graph_v2 import InvestmentGraph
+            graph_context = InvestmentGraph(self.database_path).expand_context(cleaned, max_hops=2, limit=max(20, limit * 5))
         candidates: dict[str, dict[str, object]] = {}
         mode_ranks: dict[str, dict[str, int]] = {"exact": {}, "bm25": {}, "semantic": {}, "graph": {}}
         with self._connect() as connection:
@@ -610,7 +620,7 @@ class KnowledgeStore:
         if semantic_used:
             retrieval_mode += "+semantic"
         if graph_used:
-            retrieval_mode += "+neo4j"
+            retrieval_mode += '+graph-v2-sqlite' if os.getenv('STOCK_AGENT_GRAPH_RAG_V2_ENABLED', 'false').lower() in {'true', '1', 'on'} else '+neo4j'
         return KnowledgeSearchResult(
             query=query,
             citations=selected,

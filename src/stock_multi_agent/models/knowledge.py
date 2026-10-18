@@ -29,6 +29,15 @@ class KnowledgeNodeType(str, Enum):
     CONCEPT = "CONCEPT"
     SECTION = "SECTION"
     PUBLISHER = "PUBLISHER"
+    COMPANY = 'COMPANY'
+    TICKER = 'TICKER'
+    EXCHANGE = 'EXCHANGE'
+    SECTOR = 'SECTOR'
+    PERSON = 'PERSON'
+    EVENT = 'EVENT'
+    METRIC = 'METRIC'
+    PERIOD = 'PERIOD'
+    RISKFACTOR = 'RISKFACTOR'
 
 
 class KnowledgeRelationType(str, Enum):
@@ -38,6 +47,14 @@ class KnowledgeRelationType(str, Enum):
     PUBLISHED_BY = "PUBLISHED_BY"
     ABOUT_TOPIC = "ABOUT_TOPIC"
     CO_OCCURS_WITH = "CO_OCCURS_WITH"
+    LISTED_AS = 'LISTED_AS'
+    IN_SECTOR = 'IN_SECTOR'
+    PUBLISHED = 'PUBLISHED'
+    REPORTS_METRIC = 'REPORTS_METRIC'
+    HAS_EVENT = 'HAS_EVENT'
+    EXPOSED_TO = 'EXPOSED_TO'
+    RELATED_TO = 'RELATED_TO'
+    SUPERSEDES = 'SUPERSEDES'
 
 
 class KnowledgeDocument(BaseModel):
@@ -112,6 +129,9 @@ class KnowledgeGraphPath(BaseModel):
     score: float = Field(ge=0.0)
     evidence_document_id: str | None = None
     evidence_chunk_id: str | None = None
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
 
 
 class KnowledgeGraphContext(BaseModel):

@@ -20,6 +20,7 @@ from stock_multi_agent.models.forecast import PriceForecast
 from stock_multi_agent.models.messages import AgentMessage, AgentName
 from stock_multi_agent.models.llm import AgentLLMReview
 from stock_multi_agent.models.research import Citation
+from stock_multi_agent.models.research_contracts import RequestBudget
 
 
 class TraceEvent(BaseModel):
@@ -35,6 +36,7 @@ class AgentState(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     ticker: str
+    request_budget: RequestBudget = Field(default_factory=RequestBudget)
     investment_horizon: str
     user_goal: str
     required_data: list[str] = Field(default_factory=lambda: ["ohlcv", "financials"])
@@ -43,6 +45,9 @@ class AgentState(BaseModel):
     benchmark_data: MarketData | None = None
     price_forecast: PriceForecast | None = None
     research_evidence: list[Citation] = Field(default_factory=list)
+    research_freshness_note: str = ""
+    financial_fact_proposals: list[dict] = Field(default_factory=list)
+    evidence_follow_up_outcomes: Annotated[list[dict], operator.add] = Field(default_factory=list)
     portfolio_positions: list[PortfolioPosition] = Field(default_factory=list)
     technical_result: TechnicalAnalysis | None = None
     fundamental_result: FundamentalAnalysis | None = None

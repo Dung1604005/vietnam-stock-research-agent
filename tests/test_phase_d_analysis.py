@@ -83,7 +83,7 @@ def test_risk_decomposes_unknown_event_and_portfolio_dimensions() -> None:
     result = RiskAgent(toolkit).run(state)["risk_result"]
     sections = {section.name: section for section in result.sections}
     assert sections["market"].status == "ASSESSED"
-    assert sections["liquidity"].status == "ASSESSED"
+    assert sections["liquidity"].status == "PARTIAL"
     assert sections["event_news"].status == "UNKNOWN"
     assert sections["portfolio"].status == "UNKNOWN"
 
@@ -154,10 +154,10 @@ def test_fundamental_uses_reported_growth_and_cash_conversion_when_ratios_are_mi
     data = conflict_market_data().model_copy(update={
         "financials": conflict_market_data().financials.model_copy(update={"revenue_growth": None, "profit_growth": None}),
         "financial_statement_observations": [
-            FinancialStatementObservation(statement="income_statement", metric="revenue", value=100, unit="currency", period_label="2024", period_end=date(2024, 12, 31), source_id="test:income"),
-            FinancialStatementObservation(statement="income_statement", metric="revenue", value=120, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income"),
-            FinancialStatementObservation(statement="income_statement", metric="net_profit", value=10, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income"),
-            FinancialStatementObservation(statement="cash_flow", metric="operating_cash_flow", value=12, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:cash"),
+            FinancialStatementObservation(statement="income_statement", metric="revenue", value=100, unit="currency", period_label="2024", period_end=date(2024, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
+            FinancialStatementObservation(statement="income_statement", metric="revenue", value=120, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
+            FinancialStatementObservation(statement="income_statement", metric="net_profit", value=10, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
+            FinancialStatementObservation(statement="cash_flow", metric="operating_cash_flow", value=12, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:cash", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
         ],
     })
     result = FundamentalAgent(FinancialToolkit()).run(
@@ -172,10 +172,10 @@ def test_current_statements_keep_fundamental_analysis_available_when_ratios_are_
     from stock_multi_agent.services.data_quality import DataQualityChecker
 
     statements = [
-        FinancialStatementObservation(statement="income_statement", metric="revenue", value=100, unit="currency", period_label="2024", period_end=date(2024, 12, 31), source_id="test:income"),
-        FinancialStatementObservation(statement="income_statement", metric="revenue", value=120, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income"),
-        FinancialStatementObservation(statement="income_statement", metric="net_profit", value=10, unit="currency", period_label="2024", period_end=date(2024, 12, 31), source_id="test:income"),
-        FinancialStatementObservation(statement="income_statement", metric="net_profit", value=14, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income"),
+        FinancialStatementObservation(statement="income_statement", metric="revenue", value=100, unit="currency", period_label="2024", period_end=date(2024, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
+        FinancialStatementObservation(statement="income_statement", metric="revenue", value=120, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
+        FinancialStatementObservation(statement="income_statement", metric="net_profit", value=10, unit="currency", period_label="2024", period_end=date(2024, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
+        FinancialStatementObservation(statement="income_statement", metric="net_profit", value=14, unit="currency", period_label="2025", period_end=date(2025, 12, 31), source_id="test:income", currency="VND", scale=1, reporting_basis="ANNUAL", consolidation="CONSOLIDATED"),
     ]
     data = conflict_market_data().model_copy(update={
         "financial_observations": [FinancialMetricObservation(metric="pe", value=18, unit="multiple", period_label="2018", period_end=date(2018, 12, 31), source_id="test:ratio")],
@@ -210,5 +210,5 @@ def test_risk_assesses_verified_events_and_user_portfolio_when_supplied() -> Non
     result = RiskAgent(TechnicalIndicatorToolkit()).run(state)["risk_result"]
     sections = {section.name: section for section in result.sections}
     assert sections["event_news"].status == "ASSESSED"
-    assert sections["portfolio"].status == "ASSESSED"
+    assert sections["portfolio"].status == "PARTIAL"
     assert any("suspension" in item.casefold() for item in result.criticisms)

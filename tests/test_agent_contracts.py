@@ -12,13 +12,13 @@ from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolk
 
 
 class _ResearchFixture:
-    def search(self, query: str, ticker: str | None = None, limit: int = 5) -> EvidenceBundle:
+    def search(self, query: str, ticker: str | None = None, limit: int = 5, **kwargs) -> EvidenceBundle:
         del ticker, limit
         now = datetime.now(timezone.utc)
         citation = Citation(
             document_id="document-1234567890",
             chunk_id="chunk-123456789012",
-            title="FPT annual report",
+            title="FPT annual report 2025",
             source_url="https://example.com/fpt-report",
             publisher="FPT",
             published_at=now,
@@ -35,7 +35,7 @@ def test_every_agent_declares_an_explicit_contract_and_only_bounded_roles_can_us
     agent_types = [DataAgent, ResearchAgent, TechnicalAgent, FundamentalAgent, RiskAgent, ManagerAgent]
     assert {agent.spec.role for agent in agent_types} == set(AgentName) - {AgentName.USER}
     assert [agent.spec.role for agent in agent_types if agent.spec.can_use_llm] == [
-        AgentName.TECHNICAL, AgentName.MANAGER,
+        AgentName.RESEARCH, AgentName.TECHNICAL, AgentName.FUNDAMENTAL, AgentName.RISK, AgentName.MANAGER,
     ]
     assert all(agent.spec.required_context for agent in agent_types)
     assert all(agent.spec.output_type for agent in agent_types)

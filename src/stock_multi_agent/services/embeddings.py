@@ -5,6 +5,7 @@ import json
 import os
 import re
 import unicodedata
+from pathlib import Path
 from typing import Protocol
 from urllib.request import Request, urlopen
 
@@ -25,7 +26,7 @@ class LocalHashEmbeddingProvider:
     the RAG pipeline usable when an Ollama embedding model is unavailable.
     """
 
-    model_id = "local-hash-vi-v1"
+    model_id = "local-hash-vi-v2"
     _ALIASES = {
         "doanh thu": ("revenue", "sales"),
         "loi nhuan": ("profit", "earnings"),
@@ -53,7 +54,7 @@ class LocalHashEmbeddingProvider:
         for size in (3, 4, 5):
             features.extend(f"c:{compact[index:index + size]}" for index in range(max(0, len(compact) - size + 1)))
         for phrase, aliases in self._ALIASES.items():
-            if phrase in normalized or any(alias in normalized for alias in aliases):
+            if any(re.search(rf"\b{re.escape(alias)}\b", normalized) for alias in (phrase, *aliases)):
                 features.extend(f"a:{alias}" for alias in (phrase, *aliases))
 
         vector = np.zeros(self.dimensions, dtype=np.float32)
@@ -95,6 +96,8 @@ class OllamaEmbeddingProvider:
     def embed(self, texts: list[str]) -> list[np.ndarray]:
         if not texts:
             return []
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('embedding.ollama')
         body = json.dumps({"model": self.model, "input": texts, "truncate": True}).encode("utf-8")
         request = Request(f"{self.base_url}/api/embed", data=body, headers={"Content-Type": "application/json"})
         with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - configured local Ollama
@@ -112,8 +115,41 @@ class OllamaEmbeddingProvider:
         return results
 
 
+class E5EmbeddingProvider:
+    """Optional multilingual dense encoder. Lazy load; downloads are opt-in."""
+
+    model_id = "sentence-transformers:intfloat/multilingual-e5-small:v1"
+
+    def __init__(self):
+        self._model = None
+
+    def _encode(self, texts: list[str], prefix: str) -> list[np.ndarray]:
+        if not texts:
+            return []
+        if self._model is None:
+            from stock_multi_agent.services.execution_profiles import current_profile
+            from sentence_transformers import SentenceTransformer
+            root = Path(os.getenv("STOCK_AGENT_RUNTIME_DIR", str(Path(__file__).resolve().parents[3] / ".runtime"))).resolve()
+            if os.name == "nt" and root.drive.upper() != "D:":
+                raise ValueError("Embedding models must be stored on D:")
+            self._model = SentenceTransformer("intfloat/multilingual-e5-small", device="cpu",
+                cache_folder=str(root / "models" / "embeddings"),
+                local_files_only=(os.getenv("STOCK_AGENT_RAG_ALLOW_MODEL_DOWNLOAD", "false").lower() != "true"
+                    or current_profile().mode.value == 'OFFLINE'))
+        values = self._model.encode([prefix + text for text in texts], normalize_embeddings=True, batch_size=32)
+        return [np.asarray(value, dtype=np.float32) for value in values]
+
+    def embed(self, texts: list[str]) -> list[np.ndarray]:
+        return self._encode(texts, "passage: ")
+
+    def embed_queries(self, texts: list[str]) -> list[np.ndarray]:
+        return self._encode(texts, "query: ")
+
+
 def configured_embedding_provider() -> EmbeddingProvider:
     provider = os.getenv("STOCK_AGENT_RAG_EMBEDDING_PROVIDER", "local_hash").strip().lower()
     if provider == "ollama":
         return OllamaEmbeddingProvider()
+    if provider in {"e5", "multilingual_e5"}:
+        return E5EmbeddingProvider()
     return LocalHashEmbeddingProvider()

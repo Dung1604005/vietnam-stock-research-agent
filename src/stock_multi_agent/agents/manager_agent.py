@@ -45,6 +45,11 @@ class ManagerResponseSynthesis(BaseModel):
 
 
 class ManagerAgent(BaseAgent):
+    @staticmethod
+    def approve_evidence_follow_up(state, review, proposal):
+        from stock_multi_agent.services.evidence_follow_up import approve_proposal
+        return approve_proposal(state, review, proposal)
+
     name = AgentName.MANAGER
     goal = "Plan and coordinate specialists, resolve conflict, and produce a cautious educational recommendation."
     spec = AgentSpec(
@@ -123,6 +128,11 @@ class ManagerAgent(BaseAgent):
             },
             "warnings": response.warnings[:6],
             "allowed_source_ids": allowed_source_ids,
+            'specialist_reviews': [
+                {key: review.get(key) for key in ('agent', 'assessment', 'supporting_observations', 'counterarguments', 'cited_source_ids')}
+                for review in response.metadata.get('llm_specialist_reviews', [])
+                if review.get('status') == 'GROUNDED' and review.get('agent') in {'fundamental', 'risk'}
+            ][-2:],
         }
         system = """Bạn là Manager Agent của hệ thống nghiên cứu chứng khoán Việt Nam.
 Từ facts đã được các agent và Python tính xong, hãy viết 4 đến 6 câu tiếng Việt ngắn để tổng kết:
@@ -348,6 +358,24 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                 detail=f"Recoverable data-quality limitations: {', '.join(sorted(relevant_codes))}",
                 suggested_action=ReanalysisAction.DATA_PIPELINE,
             ))
+        if state.investment_horizon not in state.technical_result.timeframe:
+            conflicts.append(ConflictRecord(kind=ConflictKind.HORIZON_MISMATCH, dimension='time',
+                detail='Technical result does not match the requested investment horizon', suggested_action=ReanalysisAction.TECHNICAL))
+        if state.market_data:
+            values = {}
+            for item in state.market_data.financial_observations:
+                values.setdefault((item.metric, item.unit, item.period_end), set()).add(item.value)
+            if any(len(group) > 1 for group in values.values()):
+                conflicts.append(ConflictRecord(kind=ConflictKind.METRIC_CONFLICT, dimension='metric',
+                    detail='Conflicting observed financial values for the same metric/unit/period', suggested_action=ReanalysisAction.DATA_PIPELINE))
+        for conflict in conflicts:
+            if conflict.kind == ConflictKind.DATA_QUALITY_LIMITATION:
+                conflict.dimension = 'time' if any(word in conflict.detail for word in ('STALE', 'FUTURE', 'CHRONOLOGY')) else 'data'
+            elif conflict.kind in {ConflictKind.HIGH_DATA_UNCERTAINTY, ConflictKind.MISSING_SPECIALIST_RESULT,
+                    ConflictKind.TECHNICAL_EVIDENCE_INSUFFICIENT, ConflictKind.FUNDAMENTAL_EVIDENCE_INSUFFICIENT}:
+                conflict.dimension = 'data'
+            elif conflict.kind == ConflictKind.RISK_VETO:
+                conflict.dimension = 'policy'
         return conflicts
 
     @classmethod
@@ -414,7 +442,19 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             state.reanalysis_history
             and state.reanalysis_evidence_fingerprint == current_fingerprint
         )
-        can_retry = state.iteration < state.max_iterations and previous_attempt_changed_evidence
+        # Reserve one shared iteration for evidence proposals from enabled final
+        # specialist reviews; otherwise deterministic retries could consume all of it.
+        advisor = getattr(self, 'llm_advisor', None)
+        reserve = bool(state.allow_llm_planning and getattr(advisor, 'enabled', False)
+            and getattr(advisor, 'provider', None) is not None
+            and {'fundamental', 'risk'}.intersection(getattr(advisor, 'roles', set())))
+        deterministic_limit = max(0, state.max_iterations - int(reserve))
+        can_retry = state.iteration < deterministic_limit and previous_attempt_changed_evidence
+        from stock_multi_agent.services.request_telemetry import current_metrics
+        import time
+        metrics = current_metrics()
+        if metrics and time.perf_counter() - metrics.started >= metrics.budget.deadline_seconds - 5:
+            can_retry = False
         action = (
             self._select_reanalysis_action(conflict_records, state.reanalysis_history)
             if conflicts and can_retry

@@ -329,6 +329,13 @@ class TechnicalAgent(BaseAgent):
         indicator engine even when it produces an extreme estimate.
         """
         forecast = state.price_forecast
+        experimental_v4 = bool(
+            forecast is not None
+            and forecast.experimental_blend_enabled
+            and forecast.model_version == 'lstm-one-session-priority-v4'
+            and forecast.artifact_status == 'VERIFIED_FILES'
+            and forecast.technical_blend_weight == 0.2
+        )
         if (
             forecast is None
             or forecast.status is not ForecastStatus.TRAINED_MODEL
@@ -336,10 +343,19 @@ class TechnicalAgent(BaseAgent):
             or forecast.forecast_price is None
             or forecast.current_price <= 0
             or analysis.signal is Signal.UNKNOWN
+            or (forecast.policy_eligibility is False and not experimental_v4)
+            or forecast.technical_blend_weight == 0
         ):
             return analysis, False
 
-        lstm_weight = 0.2
+        # None preserves the previously selected V2 policy. New artifacts must
+        # declare eligibility separately from merely being a trained model.
+        v3_contract = 'v3' in forecast.model_version.casefold()
+        if (v3_contract or forecast.validation_status != 'LEGACY_NOT_REVALIDATED') and forecast.policy_eligibility is not True and not experimental_v4:
+            return analysis, False
+        if v3_contract and forecast.technical_blend_weight is None:
+            return analysis, False
+        lstm_weight = 0.2 if forecast.technical_blend_weight is None else min(0.2, forecast.technical_blend_weight)
         indicator_weight = 1.0 - lstm_weight
         return_scale = 0.03
         expected_return = forecast.forecast_price / forecast.current_price - 1.0
@@ -366,13 +382,16 @@ class TechnicalAgent(BaseAgent):
             "lstm_weight": lstm_weight,
             "indicator_weight": indicator_weight,
             "lstm_return_scale": return_scale,
+            "lstm_model_version": forecast.model_version,
+            "lstm_experimental_blend": experimental_v4,
+            "lstm_validation_status": forecast.validation_status,
         })
         contributions = dict(analysis.feature_contributions)
         contributions["lstm_blend_delta"] = round(blended_score - indicator_score, 4)
         evidence = [
             *analysis.evidence,
             EvidenceItem(
-                label="LSTM 20% blend",
+                label=f"LSTM {lstm_weight:.0%} blend",
                 value=(
                     f"Expected next-session return {expected_return:.2%}; "
                     f"LSTM score {lstm_score:.2f}/10; final blended score {blended_score:.2f}/10"
@@ -393,8 +412,8 @@ class TechnicalAgent(BaseAgent):
                 "lstm_price_forecast_blend",
             ])),
             "reasoning_summary": (
-                f"{analysis.reasoning_summary} Final score uses 80% indicator evidence "
-                f"and 20% LSTM next-session signal, resulting in {blended_score:.2f}/10 ({signal.value})."
+                f"{analysis.reasoning_summary} Final score uses {indicator_weight:.0%} indicator evidence "
+                f"and {lstm_weight:.0%} LSTM next-session signal, resulting in {blended_score:.2f}/10 ({signal.value})."
             ),
             "policy_version": "technical-v3-lstm20",
             "feature_contributions": contributions,

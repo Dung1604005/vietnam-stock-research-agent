@@ -72,14 +72,28 @@ class SourceReference(BaseModel):
         return value
 
 
-class FinancialMetricObservation(BaseModel):
+class FinancialObservationMetadata(BaseModel):
+    """Explicit source declarations; UNKNOWN is not silently inferred from magnitude."""
+
+    currency: str | None = None
+    scale: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    period_start: date | None = None
+    reporting_basis: str = Field(default="UNKNOWN", pattern=r"^(STANDALONE|YTD|ANNUAL|POINT_IN_TIME|TTM|UNKNOWN)$")
+    consolidation: str = Field(default="UNKNOWN", pattern=r"^(CONSOLIDATED|SEPARATE|UNKNOWN)$")
+    assurance: str = Field(default="UNKNOWN", pattern=r"^(AUDITED|REVIEWED|UNAUDITED|UNKNOWN)$")
+    source_url: str | None = None
+    evidence_quote: str | None = None
+
+
+class FinancialMetricObservation(FinancialObservationMetadata):
     metric: str
-    value: float
+    value: float = Field(allow_inf_nan=False)
     unit: str
     period_label: str
     period_end: date | None = None
     published_at: datetime | None = None
     source_id: str
+    frequency: str = Field(default='reported', pattern=r'^(annual|quarter|reported)$')
 
     @field_validator("published_at")
     @classmethod
@@ -89,12 +103,12 @@ class FinancialMetricObservation(BaseModel):
         return value
 
 
-class FinancialStatementObservation(BaseModel):
+class FinancialStatementObservation(FinancialObservationMetadata):
     """One reported statement line for a known period; never an imputed value."""
 
     statement: str = Field(pattern=r"^(income_statement|balance_sheet|cash_flow)$")
     metric: str
-    value: float
+    value: float = Field(allow_inf_nan=False)
     unit: str
     period_label: str
     period_end: date | None = None

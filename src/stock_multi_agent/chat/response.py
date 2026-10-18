@@ -33,7 +33,7 @@ class ResponseComposer:
             f"#### Kết luận: {cls.RECOMMENDATION_LABELS.get(final.recommendation.value, final.recommendation.value)}\n"
             f"{final.final_reasoning}"
         )
-        return AssistantResponse(
+        response = AssistantResponse(
             message=message,
             response_type=ResponseType.ANALYSIS,
             tickers=[state.ticker],
@@ -66,6 +66,7 @@ class ResponseComposer:
                 "conflicts": final.conflicts,
                 "agent_messages": cls._agent_messages(state),
                 "research_citations": cls._research_citations(state),
+                "financial_fact_proposals": state.financial_fact_proposals,
                 **cls._agent_quality_metadata(state, [
                     AgentName.DATA, AgentName.RESEARCH, AgentName.TECHNICAL,
                     AgentName.FUNDAMENTAL, AgentName.RISK, AgentName.MANAGER,
@@ -73,30 +74,38 @@ class ResponseComposer:
             },
         )
 
+        return cls._enhance(response, state, ['technical', 'fundamental', 'risk'])
+
     @staticmethod
     def _forecast_summary(state: AgentState) -> str:
         if state.market_data is None:
             return ""
         latest = state.market_data.bars[-1]
+        unit = state.market_data.price_unit
+        unit_label = {'VND': 'VND', 'THOUSAND_VND': 'nghìn VND'}.get(unit, 'đơn vị nguồn (chưa xác minh thang giá)')
         forecast = state.price_forecast
         if forecast is None or forecast.forecast_price is None:
             return (
                 "#### Giá hiện tại và ước tính phiên kế tiếp\n"
-                f"**Giá gần nhất ({latest.date.isoformat()}):** {latest.close:,.2f} VND  \n"
+                f"**Giá gần nhất ({latest.date.isoformat()}):** {latest.close:,.2f} {unit_label}  \n"
                 "**Ước tính phiên kế tiếp:** chưa có vì mô hình không tạo được kết quả dự báo."
             )
         bounds = ""
         if forecast.lower_bound is not None and forecast.upper_bound is not None:
-            bounds = f" · vùng dao động chẩn đoán {forecast.lower_bound:,.2f}–{forecast.upper_bound:,.2f} VND"
-        score_role = (
-            "Ước tính LSTM này đóng góp 20% vào điểm Technical; 80% còn lại đến từ các chỉ báo kỹ thuật."
-            if forecast.status.value == "TRAINED_MODEL"
-            else "Ước tính baseline chưa huấn luyện không tham gia vào điểm Technical."
-        )
+            bounds = f" · vùng dao động chẩn đoán {forecast.lower_bound:,.2f}–{forecast.upper_bound:,.2f} {unit_label}"
+        weight = state.technical_result.diagnostics.get('lstm_weight', 0) if state.technical_result else 0
+        if weight:
+            score_role = f"Ước tính LSTM này đóng góp {weight:.0%} vào điểm Technical; {1-weight:.0%} còn lại đến từ các chỉ báo kỹ thuật."
+        else:
+            score_role = 'Dự báo này chưa được áp dụng vào điểm Technical trong kết quả này.'
+        if forecast.experimental_blend_enabled:
+            score_role += ' V4 thử nghiệm do người dùng chọn; chưa qua forward validation, không phải model đã được phê duyệt.'
+        if forecast.status.value == 'BASELINE_UNTRAINED':
+            score_role = 'Ước tính baseline chưa huấn luyện không tham gia vào điểm Technical.'
         return (
             "#### Giá hiện tại và ước tính phiên kế tiếp\n"
-            f"**Giá gần nhất ({forecast.as_of.isoformat()}):** {forecast.current_price:,.2f} VND  \n"
-            f"**Ước tính phiên kế tiếp:** {forecast.forecast_price:,.2f} VND{bounds}  \n"
+            f"**Giá gần nhất ({forecast.as_of.isoformat()}):** {forecast.current_price:,.2f} {unit_label}  \n"
+            f"**Ước tính phiên kế tiếp:** {forecast.forecast_price:,.2f} {unit_label}{bounds}  \n"
             f"**Trạng thái dự báo:** {forecast.status.value} · {forecast.model_version}\n"
             f"{score_role}"
         )
@@ -120,7 +129,7 @@ class ResponseComposer:
             raise ValueError("Technical result is incomplete")
         result = state.technical_result
         evidence = cls._format_evidence(result.evidence)
-        return AssistantResponse(
+        response = AssistantResponse(
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Phân tích kỹ thuật {state.ticker}\n\n"
@@ -143,13 +152,15 @@ class ResponseComposer:
             },
         )
 
+        return cls._enhance(response, state, ['technical'])
+
     @classmethod
     def fundamental(cls, state: AgentState) -> AssistantResponse:
         if state.fundamental_result is None or state.market_data is None:
             raise ValueError("Fundamental result is incomplete")
         result = state.fundamental_result
         evidence = cls._format_evidence(result.evidence)
-        return AssistantResponse(
+        response = AssistantResponse(
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Phân tích cơ bản {state.ticker}\n\n"
@@ -171,13 +182,15 @@ class ResponseComposer:
             },
         )
 
+        return cls._enhance(response, state, ['fundamental'])
+
     @classmethod
     def risk(cls, state: AgentState) -> AssistantResponse:
         if state.risk_result is None or state.market_data is None:
             raise ValueError("Risk result is incomplete")
         result = state.risk_result
         critiques = "\n".join(f"- {item}" for item in result.criticisms) or "- Không có phản biện trọng yếu."
-        return AssistantResponse(
+        response = AssistantResponse(
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Đánh giá rủi ro {state.ticker}\n\n"
@@ -210,6 +223,47 @@ class ResponseComposer:
                 ]),
             },
         )
+
+        return cls._enhance(response, state, ['risk'])
+
+    @staticmethod
+    def _enhance(response, state, sections):
+        from stock_multi_agent.services.analysis_explainer import AnalysisExplainer
+        from stock_multi_agent.services.chart_service import ChartService
+        from stock_multi_agent.models.chart import ChartRequest, ChartType
+        AnalysisExplainer().attach(response, state, sections)
+        from stock_multi_agent.services.financial_facts import build_financial_evidence
+        response.metadata['canonical_financial_evidence'] = build_financial_evidence(state.market_data)
+        response.metadata['evidence_follow_up_outcomes'] = state.evidence_follow_up_outcomes
+        data = state.market_data
+        response.metadata['data_origins'] = [{'group': 'market_and_financial_data',
+            'mode': data.access_mode, 'as_of': str(data.as_of), 'fetched_at': data.fetched_at.isoformat(),
+            'source_ids': [item.source_id for item in data.source_refs]}]
+        if state.price_forecast:
+            forecast = state.price_forecast
+            response.metadata['data_origins'].append({'group': 'forecast', 'mode': 'MODEL_ESTIMATE',
+                'model_version': forecast.model_version, 'as_of': str(forecast.as_of),
+                'horizon_sessions': forecast.horizon_sessions, 'validation_status': forecast.validation_status,
+                'policy_eligibility': forecast.policy_eligibility,
+                'actual_technical_weight': state.technical_result.diagnostics.get('lstm_weight', 0) if state.technical_result else 0})
+        kinds = []
+        if 'technical' in sections:
+            kinds.append(ChartType.PRICE_MA)
+        if 'risk' in sections:
+            kinds.append(ChartType.DRAWDOWN)
+        if 'fundamental' in sections:
+            kinds.append(ChartType.REVENUE_PROFIT)
+        charts = ChartService()
+        unavailable = []
+        for kind in kinds:
+            try:
+                response.charts.append(charts.build_artifact(ChartRequest(ticker=state.ticker, chart_type=kind), state.market_data))
+            except ValueError as exc:
+                unavailable.append({'chart': kind.value, 'reason': str(exc)})
+        response.metadata['unavailable_charts'] = unavailable
+        if unavailable:
+            response.message += '\n\n**Biểu đồ chưa có dữ liệu:** ' + '; '.join(f'{item["chart"]}: {item["reason"]}' for item in unavailable)
+        return response
 
     @staticmethod
     def _agent_quality_metadata(state: AgentState, expected_agents: list[AgentName]) -> dict:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 import ssl
+import base64
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -11,10 +12,13 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from stock_multi_agent.models.research import FetchedDocument
+from stock_multi_agent.services.request_telemetry import observed
 
 
 class ContentFetchError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -25,7 +29,7 @@ class _NoRedirect(HTTPRedirectHandler):
 class SafeContentFetcher:
     """Fetch small public HTML documents with redirect and SSRF protections."""
 
-    allowed_content_types = frozenset({"text/html", "application/xhtml+xml"})
+    allowed_content_types = frozenset({"text/html", "application/xhtml+xml", "application/pdf"})
 
     def __init__(
         self,
@@ -34,13 +38,23 @@ class SafeContentFetcher:
         max_bytes: int = 1_500_000,
         max_redirects: int = 3,
         resolver: Callable[[str], list[str]] | None = None,
+        url_guard: Callable[[str], None] | None = None,
+        content_types: set[str] | None = None,
+        request_headers: dict[str, str] | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.max_bytes = max_bytes
         self.max_redirects = max_redirects
         self.resolver = resolver or self._resolve_public_addresses
+        self.url_guard = url_guard
+        self.request_headers = request_headers or {}
+        if content_types is not None:
+            self.allowed_content_types = frozenset(content_types)
 
+    @observed("research.fetch", "tool")
     def fetch(self, source_url: str, *, timeout_seconds: int | None = None, max_bytes: int | None = None) -> FetchedDocument:
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('research.fetch')
         timeout = timeout_seconds or self.timeout_seconds
         byte_limit = max_bytes or self.max_bytes
         current_url = self._canonical_request_url(source_url)
@@ -48,6 +62,8 @@ class SafeContentFetcher:
 
         for _ in range(self.max_redirects + 1):
             self._validate_public_https_url(current_url)
+            if self.url_guard is not None:
+                self.url_guard(current_url)
             status, headers, payload = self._open_once(current_url, timeout, byte_limit)
             if status in {301, 302, 303, 307, 308}:
                 location = headers.get("Location")
@@ -57,13 +73,17 @@ class SafeContentFetcher:
 
                 current_url = self._canonical_request_url(urljoin(current_url, location))
                 continue
+            if status == 304:
+                return FetchedDocument(requested_url=requested_url, final_url=current_url,
+                    content_type=headers.get_content_type(), status_code=304, retrieved_at=datetime.now(timezone.utc),
+                    etag=headers.get("ETag"), last_modified=headers.get("Last-Modified"))
             if not 200 <= status < 300:
-                raise ContentFetchError(f"Source returned HTTP {status}.")
+                raise ContentFetchError(f"Source returned HTTP {status}.", status)
             content_type = headers.get_content_type().lower()
             if content_type not in self.allowed_content_types:
                 raise ContentFetchError(f"Unsupported content type: {content_type or 'unknown'}.")
             charset = headers.get_content_charset() or "utf-8"
-            body = payload.decode(charset, errors="replace")
+            body = base64.b64encode(payload).decode("ascii") if content_type == "application/pdf" else payload.decode(charset, errors="replace")
             if not body.strip():
                 raise ContentFetchError("Source returned an empty document.")
             return FetchedDocument(
@@ -73,11 +93,13 @@ class SafeContentFetcher:
                 status_code=status,
                 retrieved_at=datetime.now(timezone.utc),
                 body=body,
+                body_encoding="base64" if content_type == "application/pdf" else "text",
+                etag=headers.get("ETag"), last_modified=headers.get("Last-Modified"), byte_size=len(payload),
             )
         raise ContentFetchError(f"Source exceeded the redirect limit ({self.max_redirects}).")
 
     def _open_once(self, source_url: str, timeout: int, byte_limit: int) -> tuple[int, Any, bytes]:
-        request = Request(source_url, headers={"User-Agent": "StockResearchAssistant/0.1 (research retrieval)"})
+        request = Request(source_url, headers={"User-Agent": "StockResearchAssistant/0.1 (research retrieval)", **self.request_headers})
         opener = build_opener(_NoRedirect(), HTTPSHandler(context=self._ssl_context()))
         try:
             with opener.open(request, timeout=timeout) as response:
@@ -86,9 +108,9 @@ class SafeContentFetcher:
                     raise ContentFetchError(f"Source exceeds the {byte_limit} byte safety limit.")
                 return response.status, response.headers, payload
         except HTTPError as exc:
-            if exc.code in {301, 302, 303, 307, 308}:
+            if exc.code in {301, 302, 303, 304, 307, 308}:
                 return exc.code, exc.headers, b""
-            raise ContentFetchError(f"Source returned HTTP {exc.code}.") from exc
+            raise ContentFetchError(f"Source returned HTTP {exc.code}.", exc.code) from exc
         except (OSError, URLError) as exc:
             raise ContentFetchError("Unable to retrieve the source.") from exc
 

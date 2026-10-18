@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import TypeVar
+from stock_multi_agent.services.request_telemetry import current_metrics
 
 
 T = TypeVar("T")
@@ -135,6 +136,10 @@ class ResilientExecutor:
             try:
                 self.rate_limiter.acquire()
                 self.attempts_total += 1
+                metrics = current_metrics()
+                if metrics:
+                    metrics.api_calls += 1
+                    metrics.retries += int(attempt > 1)
                 result = operation()
                 self.breaker.success()
                 self.successful_operations += 1

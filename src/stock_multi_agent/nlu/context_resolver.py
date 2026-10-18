@@ -84,7 +84,7 @@ class ContextResolver:
             resolved["two active stocks"] = tickers
 
         implicit_action = re.search(
-            r"\b(?:chart dau|ve thu|cho chart|cho rsi|cho macd|rsi thi sao|macd thi sao|nua nam thoi|dai han thi sao)\b",
+            r"\b(?:chart dau|ve thu|cho chart|cho rsi|cho macd|rsi thi sao|macd thi sao|nua nam thoi|dai han thi sao|doi thanh|doi sang|ve bieu do|bieu do doanh thu|bieu do dong tien|bieu do tang truong|them chart|them bieu do)\b",
             text,
         )
         if implicit_action and not tickers and active:

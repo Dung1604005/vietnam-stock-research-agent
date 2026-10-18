@@ -5,6 +5,9 @@ import json
 import logging
 import sqlite3
 import time
+import hashlib
+from collections import OrderedDict
+from datetime import date
 from typing import Any
 
 from stock_multi_agent.models.chat import ConversationState, ParsedQuery, QueryIntent
@@ -16,6 +19,7 @@ from stock_multi_agent.nlu.normalizer import VietnameseTextNormalizer
 from stock_multi_agent.nlu.prompts import EXAMPLE_BANK_VERSION, SEMANTIC_PROMPT_VERSION, SEMANTIC_SYSTEM_PROMPT
 from stock_multi_agent.nlu.telemetry import SemanticTelemetryEvent, SemanticTelemetryStore, configured_semantic_telemetry_store
 from stock_multi_agent.providers.llm_provider import SemanticLLMProvider, configured_semantic_provider
+from stock_multi_agent.services.request_telemetry import current_metrics, observed
 
 
 class HybridSemanticParser:
@@ -35,23 +39,45 @@ class HybridSemanticParser:
             configured_semantic_provider() if use_configured_provider else None
         )
         self.telemetry_store = telemetry_store if telemetry_store is not None else configured_semantic_telemetry_store()
+        self._cache: OrderedDict[str, tuple[float, ParsedQuery]] = OrderedDict()
+        self._force_llm = llm_provider is not None
 
+    @observed("semantic_parse")
     def parse(self, raw_query: str, context: ConversationState | None = None) -> ParsedQuery:
         started_at = time.perf_counter()
         raw = raw_query.strip()
         normalized = self.normalizer.normalize(raw)
+        signature = {"query": raw, "context": context.model_dump(mode="json", exclude={
+            "messages", "conversation_id", "updated_at", "last_analysis"}) if context else None}
+        cache_key = hashlib.sha256(json.dumps(signature, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        cached = self._cache.get(cache_key)
+        if cached and started_at - cached[0] < 300:
+            self._cache.move_to_end(cache_key)
+            metrics = current_metrics()
+            if metrics:
+                metrics.cache_hits += 1
+            return cached[1].model_copy(deep=True, update={"raw_query": raw_query, "cache_hit": True,
+                "llm_attempted": False, "llm_latency_ms": None,
+                "parser_latency_ms": round((time.perf_counter() - started_at) * 1000)})
         extracted = self.entities.extract(raw, normalized)
         resolved = self.context.resolve(normalized, extracted.tickers, context)
 
+        local = self._fallback(raw, normalized, extracted, resolved, context)
+        local = self._enforce_knowledge_contract(local, normalized)
+        local = self._extended_intents(local, normalized, context, extracted)
+        use_llm = self.llm_provider is not None and (self._force_llm or local.confidence < 0.85
+            or bool(local.secondary_intents) or local.intent == QueryIntent.UNKNOWN)
         semantic: SemanticQuery | None = None
-        llm_attempted = self.llm_provider is not None
+        llm_attempted = use_llm
         llm_latency_ms: int | None = None
         fallback_reason: str | None = "no_configured_llm" if self.llm_provider is None else None
-        if self.llm_provider is not None:
+        if use_llm:
             llm_started_at = time.perf_counter()
             try:
                 semantic = self._parse_with_llm(raw, normalized, extracted.model_dump(), resolved.model_dump(), context)
                 semantic = self._merge_deterministic_entities(semantic, extracted.model_dump(), resolved.model_dump())
+                if extracted.duration:
+                    semantic = semantic.model_copy(update={"time_horizon": local.time_horizon, "chart_period": local.chart_period})
             except Exception as exc:
                 # Network/model failures must not break local mock mode behavior.
                 semantic = None
@@ -59,10 +85,11 @@ class HybridSemanticParser:
             finally:
                 llm_latency_ms = round((time.perf_counter() - llm_started_at) * 1000)
         if semantic is None:
-            semantic = self._fallback(raw, normalized, extracted, resolved, context)
+            semantic = local
         semantic = self._enforce_recommendation_contract(semantic, normalized)
         semantic = self._enforce_discovery_contract(semantic)
         semantic = self._enforce_knowledge_contract(semantic, normalized)
+        semantic = self._extended_intents(semantic, normalized, context, extracted)
         semantic = self._enforce_required_entity_contract(semantic)
         parsed = semantic.to_parsed_query().model_copy(update={
             "parser_latency_ms": round((time.perf_counter() - started_at) * 1000),
@@ -72,6 +99,50 @@ class HybridSemanticParser:
             "prompt_version": SEMANTIC_PROMPT_VERSION,
             "example_bank_version": EXAMPLE_BANK_VERSION,
         })
+        exchange = re.search(r"\b(hose|hsx|hnx|upcom)\b", normalized)
+        date_match = re.search(r"\b(\d{4})[-/](\d{2})[-/](\d{2})\b", raw)
+        if date_match:
+            try:
+                parsed.as_of = date(*map(int, date_match.groups()))
+            except ValueError:
+                parsed.needs_clarification = True
+                parsed.clarification_question = "Ngày yêu cầu không hợp lệ; bạn nhập lại theo YYYY-MM-DD nhé."
+        parsed.exchange = exchange.group(1).upper().replace("HSX", "HOSE") if exchange else None
+        raw_dates = re.findall(r"\b(\d{4})[-/](\d{2})[-/](\d{2})\b", raw)
+        if len(raw_dates) >= 2 and re.search(r"\btu\b.+\bden\b", normalized):
+            try:
+                parsed.published_after = date(*map(int, raw_dates[0]))
+                parsed.as_of = date(*map(int, raw_dates[-1]))
+                if parsed.published_after > parsed.as_of:
+                    raise ValueError("inverted date range")
+            except ValueError:
+                parsed.needs_clarification = True
+                parsed.clarification_question = "Khoảng ngày không hợp lệ; ngày bắt đầu phải trước ngày kết thúc."
+        if re.search(r"\b(?:an toan|rui ro thap|bao thu)\b", normalized):
+            parsed.risk_preference = "LOW"
+        elif re.search(r"\b(?:rui ro cao|mao hiem|chap nhan rui ro)\b", normalized):
+            parsed.risk_preference = "HIGH"
+        for dimension, pattern in {"valuation": r"\b(?:dinh gia|pe|pb)\b", "risk": r"\brui ro\b",
+                "growth": r"\btang truong\b", "liquidity": r"\bthanh khoan\b"}.items():
+            if re.search(pattern, normalized):
+                parsed.comparison_dimensions.append(dimension)
+        for indicator, operator, number in re.findall(r"\b(pe|pb|roe|rsi)\s*(duoi|tren|<|>)\s*(\d+(?:[.,]\d+)?)", normalized):
+            parsed.filters[f"{indicator}_{'lt' if operator in {'duoi', '<'} else 'gt'}"] = float(number.replace(",", "."))
+        if parsed.intent == QueryIntent.PORTFOLIO_RISK:
+            pairs = re.findall(r'\b([A-Z][A-Z0-9]{1,9})\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%', raw)
+            parsed.portfolio_weights = {ticker: float(value.replace(',', '.')) / 100 for ticker, value in pairs}
+            if len(pairs) == len(parsed.portfolio_weights) and parsed.portfolio_weights and all(0 < value <= 1 for value in parsed.portfolio_weights.values()) and sum(parsed.portfolio_weights.values()) <= 1.000001:
+                parsed.tickers = list(parsed.portfolio_weights)
+                parsed.needs_clarification, parsed.clarification_question = False, None
+            else:
+                parsed.needs_clarification = True
+                parsed.clarification_question = 'Nhập mã và tỷ trọng không trùng, tổng không quá 100%, ví dụ: rủi ro danh mục FPT 60% HPG 40%.'
+        if parsed.intent == QueryIntent.SCENARIO_ANALYSIS:
+            shocks = re.findall(r'(?:(giảm|giam|tăng|tang)\s+)?([+-]?\d+(?:[.,]\d+)?)\s*%', raw.casefold())
+            parsed.scenario_shocks = [(-abs(float(value.replace(',', '.'))) if direction in {'giảm', 'giam'} else float(value.replace(',', '.'))) / 100 for direction, value in shocks][:5]
+        self._cache[cache_key] = (started_at, parsed.model_copy(deep=True))
+        while len(self._cache) > 256:
+            self._cache.popitem(last=False)
         logging.getLogger(__name__).info(
             "semantic_parse %s",
             json.dumps({
@@ -102,6 +173,58 @@ class HybridSemanticParser:
             except (OSError, ValueError, sqlite3.Error) as exc:
                 logging.getLogger(__name__).warning("semantic_telemetry_write_failed %s", type(exc).__name__)
         return parsed
+
+    @staticmethod
+    def _extended_intents(semantic, normalized, context, extracted):
+        updates = {}
+        if re.search(r"\b(?:danh muc|portfolio)\b", normalized) and re.search(r"\b(?:rui ro|risk|bien dong)\b", normalized):
+            updates = {"intent": QueryIntent.PORTFOLIO_RISK, "confidence": 0.95,
+                "needs_clarification": True,
+                "clarification_question": "Nhập mã và tỷ trọng, ví dụ: rủi ro danh mục FPT 60% HPG 40%."}
+        elif re.search(r'\b(?:xuat|export)\b.*\b(?:bao cao|report|html|markdown)\b', normalized):
+            updates = {'intent': QueryIntent.REPORT_EXPORT, 'confidence': .98, 'needs_clarification': False, 'clarification_question': None}
+        elif re.search(r'\b(?:ve|bieu do|chart|dashboard)\b', normalized) and not re.match(r'^(?:phan tich|danh gia|nhan xet|so\b|so sanh|compare)', normalized) and not re.search(r'\b(?:la gi|cong thuc)\b', normalized):
+            updates = {'intent': QueryIntent.STOCK_CHART, 'confidence': .97}
+        elif re.search(r'\b(?:vi sao|tai sao)\b.*\b(?:ket luan|danh gia)\b.*\b(?:doi|thay doi)\b', normalized):
+            updates = {'intent': QueryIntent.CHANGE_EXPLANATION, 'confidence': .97}
+        elif re.search(r'\b(?:kich ban|sensitivity|scenario)\b', normalized):
+            updates = {'intent': QueryIntent.SCENARIO_ANALYSIS, 'confidence': .97}
+        elif re.search(r'\b(?:tac dong|anh huong)\b.*\b(?:su kien|tin tuc)\b', normalized):
+            updates = {'intent': QueryIntent.EVENT_IMPACT, 'confidence': .97}
+        elif re.search(r'\b(?:so sanh|thay doi)\b.*\b(?:bao cao|loi nhuan|doanh thu)\b.*\b(?:hai ky|2 ky|giua cac ky)\b', normalized):
+            updates = {'intent': QueryIntent.REPORT_CHANGE, 'confidence': .97}
+        elif re.search(r'\b(?:percentile|peer comparison|so sanh cung nganh)\b', normalized):
+            updates = {'intent': QueryIntent.PEER_COMPARISON, 'confidence': .97}
+        elif semantic.tickers and re.search(r"\b(?:du doan|du bao|forecast|uoc tinh gia)\b", normalized):
+            updates = {"intent": QueryIntent.FORECAST, "confidence": 0.95}
+        elif re.search(r"\b(?:nguon du lieu|link nguon|trich dan|source)\b", normalized):
+            updates = {"intent": QueryIntent.SOURCE_REQUEST, "confidence": 0.95}
+        elif re.search(r"\b(?:luan diem|thesis)\b", normalized):
+            updates = {"intent": QueryIntent.THESIS_REVIEW, "confidence": 0.92}
+        elif re.search(r"\b(?:trong|dua tren|doc|tom tat)\b", normalized) and re.search(r"\b(?:bao cao|tai lieu|filing|document)\b", normalized):
+            updates = {"intent": QueryIntent.DOCUMENT_QA, "confidence": 0.94}
+        if context and extracted.duration and not extracted.tickers and re.match(r"^(?:doi thanh|doi sang|chuyen sang)", normalized):
+            updates = {"intent": context.last_intent or QueryIntent.STOCK_ANALYSIS,
+                       "tickers": list(context.active_tickers), "time_horizon": HybridSemanticParser._human_horizon(extracted.duration),
+                       "references_previous_context": True, "needs_clarification": False, "clarification_question": None}
+        result = semantic.model_copy(update=updates) if updates else semantic
+        if context and not result.tickers and len(context.active_tickers) == 1 and result.intent in {
+            QueryIntent.CHANGE_EXPLANATION, QueryIntent.SCENARIO_ANALYSIS, QueryIntent.EVENT_IMPACT, QueryIntent.REPORT_CHANGE}:
+            result = result.model_copy(update={'tickers': list(context.active_tickers), 'references_previous_context': True})
+        if result.intent in {QueryIntent.DOCUMENT_QA, QueryIntent.SOURCE_REQUEST, QueryIntent.THESIS_REVIEW, QueryIntent.FORECAST,
+                QueryIntent.CHANGE_EXPLANATION, QueryIntent.SCENARIO_ANALYSIS, QueryIntent.EVENT_IMPACT,
+                QueryIntent.REPORT_CHANGE, QueryIntent.PEER_COMPARISON}:
+            if result.tickers or result.intent != QueryIntent.FORECAST:
+                result = result.model_copy(update={"needs_clarification": False, "clarification_question": None})
+        secondary = list(result.secondary_intents)
+        if result.tickers and re.search(r"\b(?:va|dong thoi|kem)\b", normalized):
+            if re.search(r"\b(?:tim|doc|tom tat) .{0,40}(?:bao cao|tai lieu)\b", normalized) and result.intent not in {
+                QueryIntent.RESEARCH, QueryIntent.DOCUMENT_QA, QueryIntent.SOURCE_REQUEST, QueryIntent.THESIS_REVIEW}:
+                secondary.append(QueryIntent.RESEARCH)
+            if re.search(r"\bphan tich ky thuat\b", normalized) and result.intent in {
+                QueryIntent.RESEARCH, QueryIntent.DOCUMENT_QA, QueryIntent.SOURCE_REQUEST, QueryIntent.THESIS_REVIEW}:
+                secondary.append(QueryIntent.TECHNICAL_ANALYSIS)
+        return result.model_copy(update={"secondary_intents": list(dict.fromkeys(secondary))})
 
     def _parse_with_llm(
         self,
@@ -196,6 +319,8 @@ class HybridSemanticParser:
             intent = (
                 QueryIntent.TECHNICAL_ANALYSIS
                 if re.search(r"\b(?:ky thuat|technical|trend|xu huong|momentum|dong luong|price action)\b", normalized)
+                else QueryIntent.FUNDAMENTAL_ANALYSIS if re.match(r'^(?:phan tich|danh gia|nhan xet)\s+(?:co ban|fundamental)\b', normalized)
+                else QueryIntent.RISK_ANALYSIS if re.match(r'^(?:phan tich|danh gia|nhan xet)\s+(?:rui ro|risk)\b', normalized)
                 else QueryIntent.STOCK_ANALYSIS
             )
         elif extracted.indicators and re.search(r"\b(?:the nao|ra sao|bao nhieu|o dau|thi sao|cho xem)\b", normalized):

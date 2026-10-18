@@ -6,6 +6,9 @@ from stock_multi_agent.config import load_workspace_env
 load_workspace_env()
 
 import streamlit as st
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+import time
 
 from stock_multi_agent.chat.conversation import InMemoryConversationStore
 from stock_multi_agent.models.chat import ChatRole
@@ -14,6 +17,8 @@ from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.price_forecast import PriceForecastService
 from stock_multi_agent.ui.components import render_assistant_message, render_user_message
 from stock_multi_agent.ui.styles import APP_CSS
+from stock_multi_agent.services.execution_profiles import execution_scope
+from stock_multi_agent.services.progress_events import ProgressSink
 
 
 st.set_page_config(page_title="Stock Multi-Agent Assistant", page_icon="🤖", layout="wide")
@@ -34,16 +39,28 @@ SUGGESTIONS = [
 # Increment when provider construction defaults change. Streamlit preserves
 # session_state across source reloads, so this prevents an old provider object
 # from retaining a bursty rate-limit policy after an application upgrade.
-SERVICE_RUNTIME_PROFILE = "free-vnstock-guard-lstm20-kb-v2-neo4j-rag-v1-colab-qwen-v13-fast-recommend"
+SERVICE_RUNTIME_PROFILE = "free-qwen3-phase6-8-v2-v4-selector-v7"
+
+
+with st.sidebar:
+    selected_lstm = st.radio('Mô hình dự báo LSTM', ['v2', 'v4'], horizontal=True,
+        format_func=lambda value: 'V2' if value == 'v2' else 'V4 · thử nghiệm',
+        key='selected_lstm_version',
+        help='Mô hình được chọn đóng góp 20% vào điểm Technical; chỉ báo kỹ thuật đóng góp 80%. Áp dụng cho yêu cầu mới.')
+    st.caption('Technical = 80% chỉ báo + 20% tín hiệu LSTM. Không phải độ chính xác dự báo.')
+    if selected_lstm == 'v4':
+        st.info('V4 đang thử nghiệm, chưa qua forward validation. Bạn đang chọn dùng trọng số demo 20%.')
 
 
 def initialize_session() -> tuple[ChatService, InMemoryConversationStore]:
-    if st.session_state.get("chat_service_runtime_profile") != SERVICE_RUNTIME_PROFILE:
-        forecast_service = PriceForecastService.from_environment(default_enabled=True)
+    runtime_profile = f'{SERVICE_RUNTIME_PROFILE}:{selected_lstm}'
+    if st.session_state.get("chat_service_runtime_profile") != runtime_profile:
+        forecast_service = PriceForecastService.from_environment(default_enabled=True,
+            model_version=selected_lstm, experimental_blend=selected_lstm == 'v4')
         st.session_state.chat_service = ChatService(
             analysis_service=AnalysisService(price_forecast_service=forecast_service)
         )
-        st.session_state.chat_service_runtime_profile = SERVICE_RUNTIME_PROFILE
+        st.session_state.chat_service_runtime_profile = runtime_profile
     if "conversations" not in st.session_state:
         st.session_state.conversations = {}
     store = InMemoryConversationStore(st.session_state.conversations)
@@ -61,6 +78,8 @@ def new_chat(store: InMemoryConversationStore) -> None:
 
 
 service, store = initialize_session()
+if service.analysis.price_forecast_service.load_warning:
+    st.sidebar.warning(service.analysis.price_forecast_service.load_warning)
 current_id = st.session_state.current_conversation_id
 conversation = store.get(current_id)
 
@@ -80,6 +99,26 @@ with st.sidebar:
         st.session_state.conversations = store.items
         st.rerun()
     st.caption("Real vnstock data · No trade execution")
+    execution_mode = st.selectbox('Chế độ chạy', ['STANDARD', 'QUICK', 'DEEP', 'OFFLINE'],
+        help='STANDARD giữ cấu hình hiện hành. QUICK không gọi LLM. OFFLINE chỉ dùng KB/replay đã lưu, không gọi mạng.')
+    offline_bundle_path = st.text_input('Replay bundle JSON trên ổ D', value='',
+        disabled=execution_mode != 'OFFLINE', help='Tạo bằng scripts/capture_demo_bundle.py; không dùng snapshot chỉ có last bar.')
+    with st.expander('Tình trạng hệ thống — kiểm tra local', expanded=False):
+        from stock_multi_agent.services.runtime_health import runtime_health
+        provider = service.analysis.data_agent.market_tool.provider
+        gateway = service.analysis.manager_agent.llm_provider
+        st.json(runtime_health(provider=provider, gateway=gateway), expanded=False)
+        st.caption('Không gọi API giá hoặc generate LLM để hiển thị bảng này.')
+    library_open = st.checkbox("Thư viện báo cáo / Crawler", key="research_library_open")
+
+if library_open:
+    from stock_multi_agent.ui.research_library import render_research_library
+    if execution_mode == 'OFFLINE':
+        st.info('Offline: tác vụ crawl/ingest từ Internet bị tắt. Chuyển STANDARD nếu muốn cập nhật nguồn.')
+        st.stop()
+    with execution_scope(execution_mode):
+        render_research_library(service.research)
+    st.stop()
 
 st.markdown('<div class="app-kicker">Stock Multi-Agent Assistant</div>', unsafe_allow_html=True)
 
@@ -110,27 +149,31 @@ if st.session_state.get("pending_prompt"):
 
 if prompt:
     render_user_message(prompt)
-    parsed = service.parser.parse(prompt, conversation)
-    plan = service.router.plan(parsed, conversation)
-    with st.status("Analyzing with specialized agents…", expanded=True) as status:
-        for step in plan.steps:
-            labels = {
-                "DATA": "Data Agent is fetching market data…",
-                "TECHNICAL": "Technical Agent is selecting indicators…",
-                "FUNDAMENTAL": "Fundamental Agent is analyzing financials…",
-                "RISK": "Risk Agent is reviewing uncertainty…",
-                "MANAGER": "Manager is synthesizing the response…",
-                "CHART": "Chart service is rendering selected data…",
-                "MARKET": "Manager is calculating market movement…",
-                "SCREENING": "Manager is screening the configured watchlist…",
-                "COMPARISON": "Manager is coordinating comparable analyses…",
-                "RESEARCH": "Research service is retrieving verified citations…",
-                "KNOWLEDGE": "Knowledge service is retrieving grounded theory…",
-                "CHAT": "Understanding your request…",
-            }
-            status.write(labels.get(step.value, f"Running {step.value}…"))
-        service.handle(prompt, conversation, parsed_query=parsed)
-        status.update(label="Analysis completed", state="complete", expanded=False)
+    sink = ProgressSink()
+    with st.status('Đang thực thi — hiển thị sự kiện từ tác vụ thực…', expanded=True) as status:
+        live_progress = st.empty()
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='stock-request') as executor:
+            future = executor.submit(copy_context().run, lambda: service.handle(prompt, conversation,
+                execution_mode=execution_mode, progress_sink=sink,
+                offline_bundle=offline_bundle_path.strip() or None))
+            while not future.done():
+                events = sink.snapshot()
+                if events:
+                    latest = {}
+                    for event in events:
+                        latest[event['node']] = event
+                    live_progress.write('\n\n'.join(f'{event["node"]} · {event["status"]}'
+                        for event in list(latest.values())[-8:]))
+                time.sleep(0.15)
+            try:
+                response = future.result()
+            except Exception as exc:
+                st.error(f'Không hoàn thành request ({type(exc).__name__}). Không tự thay dữ liệu giả.')
+                status.update(label='Request không hoàn thành', state='error')
+                st.stop()
+        failed = [event for event in sink.snapshot() if event['status'] in {'FAILED', 'PARTIAL'}]
+        status.update(label='Đã trả kết quả có giới hạn/fallback' if failed else 'Đã hoàn thành tác vụ',
+            state='complete', expanded=False)
     store.save(conversation)
     st.session_state.conversations = store.items
     st.rerun()

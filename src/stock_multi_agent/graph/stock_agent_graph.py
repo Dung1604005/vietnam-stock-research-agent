@@ -31,6 +31,11 @@ class StockAgentGraph:
 
     def _build(self) -> StateGraph:
         graph = StateGraph(AgentState)
+        from stock_multi_agent.services.request_telemetry import observed
+        register_node = graph.add_node
+        def add_observed_node(name, action, **kwargs):
+            return register_node(name, observed(f'graph.{name}')(action), **kwargs)
+        graph.add_node = add_observed_node
         graph.add_node("manager_plan", self.manager_agent.plan)
         graph.add_node("data", lambda state: self.data_agent.run(state, refresh=state.force_data_refresh))
         graph.add_node("forecast", self._forecast)
@@ -41,21 +46,23 @@ class StockAgentGraph:
             extended=False,
             allow_llm_planning=state.allow_llm_planning,
         ))
-        graph.add_node("fundamental", self.fundamental_agent.run)
+        graph.add_node("fundamental", lambda state: self.fundamental_agent.run(state, allow_llm_review=False))
         graph.add_node("dispatch_risk", self.manager_agent.dispatch_risk)
-        graph.add_node("risk", self.risk_agent.run)
+        graph.add_node("risk", lambda state: self.risk_agent.run(state, allow_llm_review=False))
         graph.add_node("manager_review", self.manager_agent.review)
-        graph.add_node("technical_reanalysis", lambda state: self.technical_agent.run(state, extended=True))
-        graph.add_node("risk_after_technical", self.risk_agent.run)
+        graph.add_node("technical_reanalysis", lambda state: self.technical_agent.run(state, extended=True, allow_llm_planning=state.allow_llm_planning))
+        graph.add_node("risk_after_technical", lambda state: self.risk_agent.run(state, allow_llm_review=False))
         graph.add_node("research_reanalysis", lambda state: self.research_agent.run(state, expanded=True))
-        graph.add_node("fundamental_after_research", self.fundamental_agent.run)
-        graph.add_node("risk_after_research", self.risk_agent.run)
+        graph.add_node("fundamental_after_research", lambda state: self.fundamental_agent.run(state, allow_llm_review=False))
+        graph.add_node("risk_after_research", lambda state: self.risk_agent.run(state, allow_llm_review=False))
         graph.add_node("data_reanalysis", lambda state: self.data_agent.run(state, refresh=True))
         graph.add_node("forecast_reanalysis", self._forecast)
         graph.add_node("research_after_data", lambda state: self.research_agent.run(state, expanded=True))
-        graph.add_node("technical_after_data", lambda state: self.technical_agent.run(state, extended=True))
-        graph.add_node("fundamental_after_data", self.fundamental_agent.run)
-        graph.add_node("risk_after_data", self.risk_agent.run)
+        graph.add_node("technical_after_data", lambda state: self.technical_agent.run(state, extended=True, allow_llm_planning=state.allow_llm_planning))
+        graph.add_node("fundamental_after_data", lambda state: self.fundamental_agent.run(state, allow_llm_review=False))
+        graph.add_node("risk_after_data", lambda state: self.risk_agent.run(state, allow_llm_review=False))
+        graph.add_node('specialist_reviews', self._specialist_reviews)
+        graph.add_node('evidence_follow_up', self._evidence_follow_up)
         graph.add_node("finalize", self.manager_agent.finalize)
 
         graph.add_edge(START, "manager_plan")
@@ -75,7 +82,7 @@ class StockAgentGraph:
                 "technical": "technical_reanalysis",
                 "research_fundamental": "research_reanalysis",
                 "data_pipeline": "data_reanalysis",
-                "finalize": "finalize",
+                "finalize": "specialist_reviews",
             },
         )
         graph.add_edge("technical_reanalysis", "risk_after_technical")
@@ -89,12 +96,34 @@ class StockAgentGraph:
         graph.add_edge("research_after_data", "fundamental_after_data")
         graph.add_edge(["technical_after_data", "fundamental_after_data"], "risk_after_data")
         graph.add_edge("risk_after_data", "manager_review")
+        graph.add_edge('specialist_reviews', 'evidence_follow_up')
+        graph.add_edge('evidence_follow_up', 'finalize')
         graph.add_edge("finalize", END)
         return graph
 
     def invoke(self, state: AgentState) -> AgentState:
-        output = self.compiled.invoke(state)
+        from stock_multi_agent.services.request_telemetry import current_metrics, request_scope
+        if current_metrics() is None:
+            with request_scope(state.request_budget):
+                return self.invoke(state)
+        output = self.compiled.invoke(state, config={'recursion_limit': max(40, 15 + state.max_iterations * 10)})
         return output if isinstance(output, AgentState) else AgentState.model_validate(output)
+
+    def _specialist_reviews(self, state):
+        if not state.allow_llm_planning:
+            return {}
+        reviews, trace = [], []
+        for agent, result in ((self.fundamental_agent, state.fundamental_result), (self.risk_agent, state.risk_result)):
+            if result is not None:
+                review = agent.review_result(state, result)
+                if review:
+                    reviews.append(review)
+                    trace.append(agent.event('REASON', 'LLM_FINAL_EVIDENCE_REVIEW', f'LLM={review.status}; final post-conflict evidence pack', 'configured_llm'))
+        return {'llm_reviews': reviews, 'trace': trace}
+
+    def _evidence_follow_up(self, state):
+        from stock_multi_agent.services.evidence_follow_up import run_evidence_follow_up
+        return run_evidence_follow_up(state, self)
 
     def _forecast(self, state: AgentState) -> dict[str, object]:
         if state.market_data is None:

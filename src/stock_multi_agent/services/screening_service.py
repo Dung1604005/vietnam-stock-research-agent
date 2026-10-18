@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from collections.abc import Callable
 from datetime import date, datetime
 from math import ceil
+from collections import OrderedDict
+from copy import deepcopy
+from time import monotonic
+from stock_multi_agent.services.request_telemetry import BudgetExceeded, current_metrics
 
 from stock_multi_agent.models.messages import AgentName
 from stock_multi_agent.models.screening import (
@@ -51,6 +55,7 @@ class ScreeningService:
         self.analysis = analysis
         self.universes = universes
         self.today_provider = today_provider or date.today
+        self._screen_cache = OrderedDict()
 
     def run(self, spec: ScreenSpec, horizon: str) -> ScreenRun:
         universe = self.universes.select(spec.universe_key)
@@ -61,6 +66,8 @@ class ScreeningService:
         result = ScreenRun(universe=universe, spec=spec, started_at=datetime.now().astimezone())
         for index, ticker in enumerate(tickers):
             try:
+                if current_metrics():
+                    current_metrics().consume('deadline')
                 state = self.analysis.analyze_technical(
                     ticker,
                     horizon,
@@ -101,14 +108,15 @@ class ScreeningService:
                     result.newest_as_of = data.as_of
                 if result.newest_fetched_at is None or data.fetched_at > result.newest_fetched_at:
                     result.newest_fetched_at = data.fetched_at
-            except (MarketDataError, ValueError) as exc:
+            except (MarketDataError, ValueError, BudgetExceeded) as exc:
                 result.candidates.append(ScreenCandidate(
                     ticker=ticker, status=ScreenStatus.UNAVAILABLE,
                     reasons=[f"Excluded: {type(exc).__name__}: {exc}"],
                 ))
-                if is_rate_limit_error(exc):
+                if is_rate_limit_error(exc) or isinstance(exc, BudgetExceeded):
+                    reason = 'request budget reached' if isinstance(exc, BudgetExceeded) else 'provider rate limit reached'
                     result.warnings.append(
-                        f"{ticker}: provider rate limit reached; stopped the screen to avoid additional requests."
+                        f"{ticker}: {reason}; stopped the screen to avoid additional requests."
                     )
                     for skipped_ticker in tickers[index + 1:]:
                         result.candidates.append(ScreenCandidate(
@@ -278,7 +286,50 @@ class ScreeningService:
         """
         if not 1 <= target_count <= spec.maximum_candidates:
             raise ValueError("target_count must be within the bounded screening universe")
-        result = self.run(spec, horizon)
+        allowed_filters = {f'{field}_{op}' for field in ('pe', 'pb', 'roe', 'rsi') for op in ('lt', 'gt')}
+        if set(spec.filters).difference(allowed_filters):
+            raise ValueError('Unsupported screen filter; allowed fields: PE, PB, ROE, RSI with < or >')
+        key = (spec.model_dump_json(), horizon, str(self.today_provider()), tuple(self.universes.select(spec.universe_key).tickers))
+        cached = self._screen_cache.get(key)
+        if cached and monotonic() - cached[0] < 120:
+            result = deepcopy(cached[1])
+            if current_metrics():
+                current_metrics().cache_hits += 1
+        else:
+            result = self.run(spec, horizon)
+            if not any('budget reached' in warning or 'rate limit' in warning for warning in result.warnings):
+                self._screen_cache[key] = (monotonic(), deepcopy(result))
+                while len(self._screen_cache) > 8:
+                    self._screen_cache.popitem(last=False)
+        if spec.filters or spec.exchange:
+            # Enrich only a ranked shortlist, not all 100 symbols. Explicitly
+            # disclose which survivors were not evaluated under custom filters.
+            candidates = [item for item in result.candidates if item.status is ScreenStatus.PASS]
+            limit = min(100, max(20, target_count * 3))
+            from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolkit
+            for index, item in enumerate(candidates):
+                if index >= limit:
+                    item.status = ScreenStatus.UNAVAILABLE
+                    item.reasons.append('Custom-filter enrichment budget exhausted before this ranked candidate.')
+                    continue
+                try:
+                    data = self.analysis.fetch_data(item.ticker, horizon, include_financials=any(not field.startswith('rsi_') for field in spec.filters), include_forecast=False).market_data
+                    if data is None or data.as_of != item.as_of:
+                        raise ValueError('Filter data and technical snapshot are not aligned')
+                    if spec.exchange and (not data.instrument or data.instrument.exchange != spec.exchange):
+                        raise ValueError('Exchange missing or does not match requested exchange')
+                    for field, threshold in spec.filters.items():
+                        metric, operator = field.rsplit('_', 1)
+                        value = TechnicalIndicatorToolkit().rsi([bar.close for bar in data.bars], 14) if metric == 'rsi' else getattr(data.financials, metric)
+                        boundary = threshold / 100 if metric == 'roe' else threshold
+                        if value is None or not (value < boundary if operator == 'lt' else value > boundary):
+                            item.status = ScreenStatus.FAIL
+                            item.reasons.append(f'Filter {field}={threshold} failed or metric unavailable.')
+                    result.source_details.extend(data.source_refs)
+                except (MarketDataError, ValueError, BudgetExceeded) as exc:
+                    item.status = ScreenStatus.UNAVAILABLE
+                    item.reasons.append(f'Custom filters unavailable: {type(exc).__name__}')
+            result.warnings.append(f'Custom filters checked at most {limit} technically ranked survivors; ROE thresholds use percentage points. Not an exhaustive market-wide financial screen.')
         survivors = [item for item in result.candidates if item.status is ScreenStatus.PASS]
         round_number = 1
         while len(survivors) > target_count:

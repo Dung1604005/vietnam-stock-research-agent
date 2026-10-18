@@ -3,9 +3,25 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from pathlib import Path
+from uuid import uuid4
 
 from stock_multi_agent.models.analysis import FinancialMetrics, MarketData, PriceBar
 from stock_multi_agent.models.data import DataKind, PriceAdjustment, SourceReference
+
+
+@pytest.fixture(scope='session')
+def isolated_runtime_root():
+    root = Path(__file__).resolve().parents[1] / '.runtime' / 'test-artifacts' / f'isolated-runtime-{uuid4().hex}'
+    root.mkdir(parents=True)
+    return root
+
+
+@pytest.fixture(autouse=True)
+def isolate_test_runtime(monkeypatch, isolated_runtime_root):
+    # ChatService now persists snapshots. Tests must never write fixture prices
+    # into the user's default research/snapshot ledger.
+    monkeypatch.setenv('STOCK_AGENT_RUNTIME_DIR', str(isolated_runtime_root))
 
 
 def conflict_market_data(ticker: str = "FPT") -> MarketData:

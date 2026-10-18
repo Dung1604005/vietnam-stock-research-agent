@@ -311,6 +311,7 @@ def test_llm_analyst_adds_grounded_commentary_without_overriding_policy() -> Non
 def test_only_technical_agent_uses_llm_for_bounded_tool_planning() -> None:
     provider = FakeSpecialistProvider()
     advisor = AgentLLMAdvisor(provider=provider, enabled=True)
+    advisor.roles = {'technical'}  # Role allowlist still preserves the lightweight profile.
     service = ChatService(
         analysis_service=AnalysisService(
             provider=MultiTickerProvider(["FPT", "VNINDEX"]),
@@ -624,9 +625,9 @@ def test_research_includes_png_official_hnx_discovery_alongside_web_search() -> 
 
 
 def test_research_keeps_a_local_citation_ahead_of_web_fallback() -> None:
-    store = ResearchStore(Path(__file__).resolve().parents[1] / ".runtime" / "test-artifacts" / "local-first.sqlite3")
+    store = ResearchStore(Path(__file__).resolve().parents[1] / ".runtime" / "test-artifacts" / "local-first-period.sqlite3")
     store.ingest_text(
-        text="FPT annual report describes revenue growth.", title="FPT annual report",
+        text="FPT annual report 2025 describes revenue growth.", title="FPT annual report 2025",
         document_type=ResearchDocumentType.ANNUAL_REPORT, source_url="https://example.com/fpt-report",
         publisher="FPT IR", published_at=datetime(2026, 1, 1, tzinfo=timezone.utc), tickers=["FPT"],
     )

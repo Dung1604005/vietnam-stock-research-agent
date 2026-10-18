@@ -12,6 +12,7 @@ class EntityExtractor:
         "USER", "CHART", "STOCK", "VOLUME", "RISK", "HIGH", "LOW", "MEDIUM",
         "TTCK", "CEO", "CFO", "EBITDA", "YOY", "QOQ", "HOSE", "HSX", "HNX", "UPCOM",
         "ATO", "ATC", "LO", "MOK", "MAK", "MTL", "DCF", "CAPM", "ATR", "ADX", "EV", "FCF",
+        'BOLLINGER', 'DRAWDOWN', 'VOLATILITY', 'RETURNS', 'REVENUE', 'PROFIT', 'CASH', 'FLOW', 'DASHBOARD',
     }
     _known_tickers = {
         "FPT", "CMG", "CTR", "ELC", "VNM", "HPG", "HSG", "VCB", "TCB", "MBB",
@@ -23,6 +24,10 @@ class EntityExtractor:
         "fpt corporation": "FPT", "cong ty fpt": "FPT", "hoa phat": "HPG",
         "vietcombank": "VCB", "vinamilk": "VNM", "the gioi di dong": "MWG",
         "vn index": "VNINDEX", "vnindex": "VNINDEX",
+        "techcombank": "TCB", "mb bank": "MBB", "mbbank": "MBB",
+        "vietinbank": "CTG", "vpbank": "VPB", "sacombank": "STB",
+        "vingroup": "VIC", "vinhomes": "VHM", "sabeco": "SAB",
+        "petrolimex": "PLX", "masan": "MSN", "phu nhuan jewelry": "PNJ",
     }
 
     def extract(self, raw: str, normalized: str) -> EntityExtraction:
@@ -55,6 +60,11 @@ class EntityExtractor:
                 return value if 1 <= value <= 100 else None
         if re.search(r"\b(?:mot|1)\s*(?:ma|co phieu)\b", text):
             return 1
+        number_words = {"hai": 2, "ba": 3, "bon": 4, "nam": 5, "sau": 6,
+                        "bay": 7, "tam": 8, "chin": 9, "muoi": 10, "muoi lam": 15, "hai muoi": 20}
+        for word, count in sorted(number_words.items(), key=lambda item: -len(item[0])):
+            if re.search(rf"\b{word}\s+(?:ma|co phieu|stocks?)\b", text):
+                return count
         if re.search(r"\b(?:tot nhat|best|cao nhat|dang mua nhat|nen mua nhat)\b", text) and re.search(r"\b(?:ma|co phieu)\b", text):
             return 1
         return None

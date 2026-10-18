@@ -83,6 +83,9 @@ class Neo4jKnowledgeGraph:
 
     @property
     def available(self) -> bool:
+        from stock_multi_agent.services.execution_profiles import current_profile
+        if current_profile().mode.value == 'OFFLINE':
+            return False
         if not self.enabled or self.driver is None:
             return False
         try:

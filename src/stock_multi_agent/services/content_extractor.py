@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import base64
+from io import BytesIO
 from datetime import datetime
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
@@ -12,7 +14,7 @@ from stock_multi_agent.models.research import ExtractedDocument, FetchedDocument
 class _ArticleTextParser(HTMLParser):
     _blocked_tags = frozenset({"script", "style", "noscript", "svg", "canvas", "iframe", "form"})
     _boilerplate_tags = frozenset({"nav", "footer", "header", "aside"})
-    _block_tags = frozenset({"article", "main", "section", "p", "h1", "h2", "h3", "h4", "li", "div", "br"})
+    _block_tags = frozenset({"article", "main", "section", "p", "h1", "h2", "h3", "h4", "li", "div", "br", "table", "tr"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -62,10 +64,27 @@ class HtmlContentExtractor:
     """Extract human-readable HTML text and conservative provenance metadata."""
 
     def extract(self, fetched: FetchedDocument) -> ExtractedDocument:
+        if fetched.content_type == "application/pdf":
+            try:
+                from pypdf import PdfReader
+            except ImportError as exc:
+                raise ValueError("PDF extraction requires the optional knowledge extra on D:") from exc
+            if fetched.body_encoding != "base64":
+                raise ValueError("PDF payload must use base64 encoding")
+            reader = PdfReader(BytesIO(base64.b64decode(fetched.body, validate=True)))
+            text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+            if not text.strip():
+                raise ValueError("Scanned PDF has no text layer; OCR required")
+            return ExtractedDocument(requested_url=fetched.requested_url, final_url=fetched.final_url,
+                canonical_url=fetched.final_url, title=str((reader.metadata or {}).get("/Title") or "PDF report")[:500],
+                retrieved_at=fetched.retrieved_at, text=text,
+                content_sha256=hashlib.sha256(text.encode()).hexdigest())
         parser = _ArticleTextParser()
         parser.feed(fetched.body)
         parser.close()
-        text = self._clean_text(" ".join(parser.text_parts))
+        text = re.sub(r"[ \t]+", " ", " ".join(parser.text_parts))
+        text = re.sub(r" *\n *", "\n\n", text)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
         if not text:
             raise ValueError("Fetched HTML has no extractable text.")
         title = self._clean_text(" ".join(parser.title_parts)) or urlsplit(str(fetched.final_url)).netloc

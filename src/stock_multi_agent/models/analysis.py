@@ -86,15 +86,19 @@ class RiskSection(BaseModel):
     """One explicit risk dimension; UNKNOWN means its input was unavailable."""
 
     name: str = Field(min_length=1, max_length=80)
-    status: str = Field(pattern=r"^(ASSESSED|UNKNOWN)$")
+    status: str = Field(pattern=r"^(ASSESSED|PARTIAL|UNKNOWN)$")
     observations: list[str] = Field(default_factory=list)
     evidence: list[EvidenceItem] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    coverage: float = Field(default=0, ge=0, le=1)
 
 
 class MarketData(BaseModel):
     ticker: str
     instrument: Instrument | None = None
     source: str
+    access_mode: str = 'UNKNOWN'
+    price_unit: str = 'UNKNOWN'
     company_name: str | None = None
     bars: list[PriceBar] = Field(min_length=1)
     financials: FinancialMetrics = Field(default_factory=FinancialMetrics)
@@ -136,7 +140,7 @@ class TechnicalAnalysis(BaseModel):
     horizon_profile: str = "medium"
     policy_version: str = "technical-v2"
     feature_contributions: dict[str, float] = Field(default_factory=dict)
-    diagnostics: dict[str, str | float | None] = Field(default_factory=dict)
+    diagnostics: dict[str, str | float | bool | None] = Field(default_factory=dict)
 
 
 class FundamentalAnalysis(BaseModel):
@@ -164,6 +168,9 @@ class RiskAnalysis(BaseModel):
     sections: list[RiskSection] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0, le=1)
     policy_version: str = "risk-v2"
+    feature_contributions: dict[str, float] = Field(default_factory=dict)
+    coverage: dict[str, float] = Field(default_factory=dict)
+    sector_template: str = "UNKNOWN"
     issuer_risk_level: RiskLevel | None = None
     issuer_risk_score: float | None = Field(default=None, ge=0, le=10)
     data_uncertainty_level: RiskLevel = RiskLevel.MEDIUM

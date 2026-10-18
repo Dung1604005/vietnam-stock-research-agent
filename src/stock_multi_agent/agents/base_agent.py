@@ -5,6 +5,7 @@ from typing import Any, Literal
 from stock_multi_agent.models.messages import AgentMessage, AgentName, MessageType
 from stock_multi_agent.models.agent_contracts import AgentExecutionReport, AgentSpec
 from stock_multi_agent.models.state import TraceEvent
+from stock_multi_agent.services.request_telemetry import observed
 
 
 class BaseAgent:
@@ -12,6 +13,12 @@ class BaseAgent:
     goal: str
     spec: AgentSpec
     llm_advisor: Any | None = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for method in ("run", "plan", "review", "finalize"):
+            if method in cls.__dict__:
+                setattr(cls, method, observed(f"{cls.__name__}.{method}")(cls.__dict__[method]))
 
     def message(
         self,

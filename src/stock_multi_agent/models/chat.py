@@ -25,6 +25,17 @@ class QueryIntent(str, Enum):
     STOCK_CHART = "STOCK_CHART"
     INDICATOR_QUERY = "INDICATOR_QUERY"
     RESEARCH = "RESEARCH"
+    DOCUMENT_QA = "DOCUMENT_QA"
+    FORECAST = "FORECAST"
+    PORTFOLIO_RISK = "PORTFOLIO_RISK"
+    THESIS_REVIEW = "THESIS_REVIEW"
+    SOURCE_REQUEST = "SOURCE_REQUEST"
+    EVENT_IMPACT = "EVENT_IMPACT"
+    CHANGE_EXPLANATION = "CHANGE_EXPLANATION"
+    REPORT_CHANGE = "REPORT_CHANGE"
+    PEER_COMPARISON = "PEER_COMPARISON"
+    SCENARIO_ANALYSIS = "SCENARIO_ANALYSIS"
+    REPORT_EXPORT = "REPORT_EXPORT"
     THEORY = "THEORY"
     CURRENT_RULE = "CURRENT_RULE"
     MIXED = "MIXED"
@@ -50,6 +61,13 @@ class ParsedQuery(BaseModel):
     secondary_intents: list[QueryIntent] = Field(default_factory=list)
     tickers: list[str] = Field(default_factory=list)
     market: str = "VN"
+    exchange: str | None = None
+    as_of: date | None = None
+    published_after: date | None = None
+    filters: dict[str, str | float] = Field(default_factory=dict)
+    portfolio_weights: dict[str, float] = Field(default_factory=dict)
+    scenario_shocks: list[float] = Field(default_factory=list, max_length=5)
+    comparison_dimensions: list[str] = Field(default_factory=list)
     sector: str | None = None
     investment_horizon: str = "3 months"
     chart_period: str | None = None
@@ -76,6 +94,7 @@ class ParsedQuery(BaseModel):
     fallback_reason: str | None = None
     prompt_version: str = "semantic-system-v1"
     example_bank_version: str = "intent-examples-v1"
+    cache_hit: bool = False
 
 
 class ResponseTable(BaseModel):

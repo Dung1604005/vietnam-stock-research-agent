@@ -11,6 +11,7 @@ from stock_multi_agent.models.research import (
 )
 from stock_multi_agent.services.content_fetcher import ContentFetchError, SafeContentFetcher
 from stock_multi_agent.services.content_extractor import HtmlContentExtractor
+from stock_multi_agent.services.reporting_period import infer_reporting_period
 from stock_multi_agent.services.research_planner import ResearchPlanner
 from stock_multi_agent.services.web_research import WebResearchError, WebResearchService
 
@@ -111,6 +112,7 @@ class ResearchOrchestrator:
                 quote=quote,
                 evidence_location="Extracted HTML text",
                 relevance_score=score,
+                reporting_period=infer_reporting_period(extracted.title, extracted.text),
             ))
 
         execution.external_citations.sort(key=lambda item: item.relevance_score, reverse=True)

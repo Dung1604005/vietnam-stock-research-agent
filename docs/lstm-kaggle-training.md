@@ -1,5 +1,9 @@
 # LSTM training on Kaggle
 
+New experiment: [LSTM V4 research and training](lstm-v4-research-and-training.md), with [self-contained Kaggle notebook](../notebooks/train_lstm_kaggle_v4_ready.ipynb). It reuses the V3 CSV/manifest without additional ZIP uploads; V2/V3 remain unchanged. V4 market-data GPU performance is not yet measured.
+
+Update 18/10/2026: V2 remains the frozen default. A **separate V3 experiment**, new dataset and notebooks are now available; see [Phase 6–8 handoff](phase-6-8-implementation.md) and [V3 model card](lstm-v3-model-card.md). No V3 GPU training or promotion is claimed. The V2 instructions below remain for reproduction/rollback.
+
 ## Dataset
 
 The real, untracked dataset is `.runtime/ml/vci_ohlcv_lstm_1m.csv`. Collection is complete: 1,000,000 labelled rows from 991 current-listed tickers. Its paired metadata file records the source, schema, failures, row count and SHA-256.

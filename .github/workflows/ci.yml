@@ -13,6 +13,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      PYTHONUTF8: "1"
+      STOCK_AGENT_LLM_PROVIDER: "none"
+      STOCK_AGENT_RAG_EMBEDDING_PROVIDER: "local_hash"
+      STOCK_AGENT_RAG_ALLOW_MODEL_DOWNLOAD: "false"
+      HF_HOME: ${{ github.workspace }}/.cache/huggingface
+      TORCH_HOME: ${{ github.workspace }}/.cache/torch
+      STOCK_AGENT_RUNTIME_DIR: ${{ github.workspace }}/.runtime/ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,3 +33,7 @@ jobs:
           python -m pip install --extra-index-url https://vnstocks.com/api/simple -e ".[dev]"
       - name: Run test suite
         run: python -m pytest
+      - name: Compile Python modules without loading optional GPU dependencies
+        run: python -m compileall -q src app scripts
+      - name: Run author-created regression benchmark (not investment validation)
+        run: python scripts/evaluate_upgrade.py --strict

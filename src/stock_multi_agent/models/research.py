@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -16,6 +16,16 @@ class ResearchDocumentType(str, Enum):
     OTHER = "other"
 
 
+class ReportingPeriod(BaseModel):
+    year: int | None = Field(default=None, ge=1900, le=2200)
+    quarter: int | None = Field(default=None, ge=1, le=4)
+    kind: str = "unknown"
+    end: date | None = None
+    label: str = "Chưa xác định"
+    status: str = "UNKNOWN"
+    evidence: str = ""
+
+
 class ResearchDocument(BaseModel):
     document_id: str = Field(min_length=16, max_length=128)
     title: str = Field(min_length=1, max_length=500)
@@ -27,6 +37,12 @@ class ResearchDocument(BaseModel):
     content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     tickers: list[str] = Field(default_factory=list)
     language: str = "vi"
+    quality_tier: str = Field(default="T4", pattern=r"^T[1-4]$")
+    usage_note: str = "Explicit user-supplied document; usage rights must be checked by the uploader."
+    version: int = Field(default=1, ge=1)
+    supersedes_id: str | None = None
+    period_end: date | None = None
+    reporting_period: ReportingPeriod = Field(default_factory=ReportingPeriod)
 
     @field_validator("published_at", "retrieved_at")
     @classmethod
@@ -57,6 +73,20 @@ class Citation(BaseModel):
     quote: str = Field(min_length=1, max_length=1400)
     retrieval_score: float = Field(default=0.0, ge=0.0, le=1.0)
     retrieval_modes: list[str] = Field(default_factory=list)
+    quality_tier: str = Field(default="T4", pattern=r"^T[1-4]$")
+    version: int = 1
+    section: str | None = None
+    period_end: date | None = None
+    reporting_period: ReportingPeriod = Field(default_factory=ReportingPeriod)
+    document_type: ResearchDocumentType = ResearchDocumentType.OTHER
+    tickers: list[str] = Field(default_factory=list)
+
+    @field_validator("published_at", "retrieved_at")
+    @classmethod
+    def aware_citation_time(cls, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError("Citation timestamps must include timezone")
+        return value
 
 
 class WebCitation(BaseModel):
@@ -98,9 +128,13 @@ class FetchedDocument(BaseModel):
     requested_url: HttpUrl
     final_url: HttpUrl
     content_type: str = Field(min_length=1, max_length=200)
-    status_code: int = Field(ge=200, le=299)
+    status_code: int = Field(ge=200, le=304)
     retrieved_at: datetime
-    body: str = Field(min_length=1)
+    body: str = ""
+    body_encoding: str = "text"
+    etag: str | None = None
+    last_modified: str | None = None
+    byte_size: int = 0
 
     @field_validator("retrieved_at")
     @classmethod
@@ -139,6 +173,7 @@ class ExternalEvidenceCitation(BaseModel):
     quote: str = Field(min_length=1, max_length=1400)
     evidence_location: str = Field(min_length=1, max_length=200)
     relevance_score: float = Field(ge=0.0, le=1.0)
+    reporting_period: ReportingPeriod = Field(default_factory=ReportingPeriod)
 
     @field_validator("published_at", "retrieved_at")
     @classmethod
@@ -160,5 +195,8 @@ class EvidenceBundle(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     web_citations: list[WebCitation] = Field(default_factory=list)
     external_citations: list[ExternalEvidenceCitation] = Field(default_factory=list)
+    historical_citations: list[Citation] = Field(default_factory=list)
+    freshness_status: str = "NOT_CHECKED"
+    freshness_note: str = ""
     retrieval_note: str
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

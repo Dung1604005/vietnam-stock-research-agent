@@ -28,19 +28,46 @@ class PriceForecastService:
         self,
         trained_model: PriceForecastModel | None = None,
         load_warning: str | None = None,
+        shadow_model: PriceForecastModel | None = None,
     ) -> None:
         self.trained_model = trained_model
         self.load_warning = load_warning
+        self.shadow_model = shadow_model
 
     @classmethod
-    def from_environment(cls, default_enabled: bool = False) -> "PriceForecastService":
-        """Load the finalized V2 artifact, with a safe baseline on any failure."""
+    def from_environment(cls, default_enabled: bool = False, *, model_version: str | None = None,
+                         experimental_blend: bool = False) -> "PriceForecastService":
+        """Load the selected local artifact; V4 demo blend requires explicit opt-in.
+
+        UI selection is session-local, never a process-wide environment change.
+        Missing/invalid models use an unscored, clearly labelled baseline.
+        """
         configured = os.getenv("STOCK_AGENT_LSTM_ENABLED")
         enabled = default_enabled if configured is None else configured.strip().lower() not in {
             "0", "false", "off", "no",
         }
         if not enabled:
             return cls()
+        selected = (model_version or os.getenv('STOCK_AGENT_FORECAST_MODEL_VERSION', 'v2')).strip().lower()
+        if selected == 'v4':
+            from stock_multi_agent.services.lstm_forecast_v4 import LstmV4ForecastModel
+            try:
+                configured_archive = os.getenv('STOCK_AGENT_LSTM_V4_ARCHIVE', '').strip()
+                archive = Path(configured_archive) if configured_archive else LstmV4ForecastModel.default_archive()
+                return cls(trained_model=LstmV4ForecastModel(archive, experimental_blend=experimental_blend))
+            except (RuntimeError, ValueError, OSError) as exc:
+                return cls(load_warning=f'V4 không khả dụng ({exc}); baseline không tham gia điểm Technical.')
+        if selected == 'v3':
+            from stock_multi_agent.services.lstm_forecast_v3 import LstmV3ForecastModel
+            directory = os.getenv('STOCK_AGENT_LSTM_V3_ARTIFACT_DIR', '').strip()
+            if not directory:
+                return cls(load_warning='V3 artifact directory is not configured; baseline used. V2 is unchanged.')
+            try:
+                return cls(trained_model=LstmV3ForecastModel(Path(directory)))
+            except (RuntimeError, ValueError, OSError) as exc:
+                return cls(load_warning=f'V3 artifact unavailable ({type(exc).__name__}); baseline used.')
+        if selected != 'v2':
+            return cls(load_warning='Unsupported forecast model version; baseline used.')
         from stock_multi_agent.services.lstm_forecast import (
             LstmArtifactError,
             LstmV2ForecastModel,
@@ -53,7 +80,15 @@ class PriceForecastService:
             else LstmV2ForecastModel.default_artifact_dir()
         )
         try:
-            return cls(trained_model=LstmV2ForecastModel(artifact_dir))
+            service = cls(trained_model=LstmV2ForecastModel(artifact_dir))
+            shadow_dir = os.getenv('STOCK_AGENT_LSTM_V3_SHADOW_DIR', '').strip()
+            if shadow_dir:
+                try:
+                    from stock_multi_agent.services.lstm_forecast_v3 import LstmV3ForecastModel
+                    service.shadow_model = LstmV3ForecastModel(Path(shadow_dir))
+                except (RuntimeError, ValueError, OSError):
+                    service.load_warning = 'V3 shadow unavailable; selected V2 forecast is unchanged.'
+            return service
         except LstmArtifactError as exc:
             return cls(load_warning=f"Finalized LSTM V2 unavailable: {exc}")
 
@@ -64,12 +99,24 @@ class PriceForecastService:
             except Exception as exc:
                 return self._untrained_baseline(
                     market_data,
-                    extra_warning=f"LSTM V2 inference unavailable; baseline used instead: {exc}",
+                    extra_warning=f"Selected LSTM inference unavailable ({type(exc).__name__}); baseline used instead.",
                 )
             if forecast.ticker != market_data.ticker or forecast.as_of != market_data.bars[-1].date:
                 raise ValueError("Trained forecast model returned a ticker or as-of date inconsistent with market data")
             if forecast.status is not ForecastStatus.TRAINED_MODEL:
                 raise ValueError("Trained forecast model must label its result TRAINED_MODEL")
+            if self.shadow_model is not None:
+                try:
+                    shadow = self.shadow_model.predict_next_session(market_data)
+                    if shadow.ticker != forecast.ticker or shadow.as_of != forecast.as_of:
+                        raise ValueError('Shadow ticker/as-of mismatch')
+                    forecast = forecast.model_copy(update={'shadow_forecast': {
+                        'model_version': shadow.model_version, 'as_of': str(shadow.as_of),
+                        'forecast_price': shadow.forecast_price, 'validation_status': shadow.validation_status,
+                        'technical_blend_weight': 0, 'mode': 'SHADOW_NOT_SCORED'}})
+                except Exception as exc:
+                    forecast = forecast.model_copy(update={'shadow_forecast': {
+                        'mode': 'SHADOW_UNAVAILABLE', 'error_type': type(exc).__name__, 'technical_blend_weight': 0}})
             return forecast
         return self._untrained_baseline(market_data)
 

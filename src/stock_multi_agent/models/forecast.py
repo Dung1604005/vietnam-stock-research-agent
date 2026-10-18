@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ForecastStatus(str, Enum):
@@ -14,6 +14,7 @@ class ForecastStatus(str, Enum):
 
 class PriceForecast(BaseModel):
     """A transparent next-session estimate, separate from an investment recommendation."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     ticker: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$")
     as_of: date
@@ -26,6 +27,12 @@ class PriceForecast(BaseModel):
     method: str
     model_version: str
     confidence: float = Field(ge=0, le=1)
+    artifact_status: str = 'UNKNOWN'
+    validation_status: str = 'LEGACY_NOT_REVALIDATED'
+    policy_eligibility: bool | None = None
+    technical_blend_weight: float | None = Field(default=None, ge=0, le=0.2)
+    experimental_blend_enabled: bool = False
+    shadow_forecast: dict | None = None
     warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")

@@ -25,6 +25,7 @@ def _state_with_results(market_data) -> AgentState:
 
 
 def test_high_measured_risk_does_not_veto_below_severe_threshold(market_data) -> None:
+    market_data.price_unit = 'VND'
     state = _state_with_results(market_data)
     update = RiskAgent(TechnicalIndicatorToolkit()).run(state)
     result = update["risk_result"]

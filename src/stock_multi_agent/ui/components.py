@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+import html
 
 from stock_multi_agent.models.chat import AssistantResponse, ResponseType
 from stock_multi_agent.services.chart_service import ChartService
@@ -13,8 +14,15 @@ def render_user_message(content: str) -> None:
 
 
 def render_assistant_message(response: AssistantResponse, chart_service: ChartService) -> None:
+    from uuid import uuid4
+    render_key = response.metadata.get('request_metrics', {}).get('request_id') or response.metadata.setdefault('ui_render_id', uuid4().hex)
     with st.chat_message("assistant", avatar="🤖"):
         st.markdown(response.message)
+        profile = response.metadata.get('execution_profile', {})
+        if profile:
+            st.caption(f'Chế độ: {profile.get("mode", "STANDARD")} · Ngân sách là giới hạn, không phải cam kết tốc độ.')
+        for origin in response.metadata.get('data_origins', []):
+            st.caption(f'{origin.get("group")}: {origin.get("mode")} · dữ liệu đến {origin.get("as_of", "chưa rõ")}')
         if response.response_type == ResponseType.ANALYSIS:
             render_analysis_card(response)
         if response.response_type == ResponseType.MARKET_OVERVIEW:
@@ -24,9 +32,16 @@ def render_assistant_message(response: AssistantResponse, chart_service: ChartSe
                 render_comparison_table(table.title, table.rows, table.note)
             else:
                 render_stock_table(table.title, table.rows, table.note)
-        for chart in response.charts:
-            render_chart(chart_service.render_figure(chart))
+        if response.charts:
+            targets = st.tabs([f'{chart.request.ticker} · {chart.request.chart_type.value}' for chart in response.charts]) if len(response.charts) > 1 else [st.container()]
+            for index, (target, chart) in enumerate(zip(targets, response.charts)):
+                with target:
+                    render_chart(chart_service.render_figure(chart), key=f'chart-{render_key}-{index}')
+                    st.caption(f'{chart.explanation} Dữ liệu đến {chart.data_timestamp} · Nguồn: {chart.source}')
+                    for warning in chart.warnings:
+                        st.caption(warning)
         render_knowledge_citations(response)
+        render_claim_evidence(response)
         render_data_freshness(response)
         render_response_warnings(response)
         render_semantic_debug(response)
@@ -34,6 +49,32 @@ def render_assistant_message(response: AssistantResponse, chart_service: ChartSe
             render_agent_status(response)
             render_agent_trace(response)
         render_disclaimer(response)
+        if response.source_details or response.tables or response.metadata.get('research_brief'):
+            from stock_multi_agent.services.research_workbench import ResearchWorkbench
+            key = render_key
+            first, second, third = st.columns(3)
+            first.download_button('Tải báo cáo Markdown', ResearchWorkbench.export(response),
+                file_name='research-report.md', mime='text/markdown', key=f'export-md-{key}')
+            second.download_button('Tải báo cáo HTML', ResearchWorkbench.export(response, 'html'),
+                file_name='research-report.html', mime='text/html', key=f'export-html-{key}')
+            from stock_multi_agent.services.audit_export import export_audit_json
+            third.download_button('Tải audit JSON đã lọc', export_audit_json(response),
+                file_name='research-audit.json', mime='application/json', key=f'export-audit-{key}')
+            st.caption('Export gồm dữ liệu phân tích, nguồn và audit đã lọc; không gồm khóa, raw prompt hoặc danh mục riêng mặc định. Kiểm tra trước khi chia sẻ.')
+
+
+def render_claim_evidence(response):
+    reviews = response.metadata.get('llm_specialist_reviews', [])
+    if not reviews:
+        return
+    with st.expander('Đối chiếu nhận định → trích đoạn → nguồn', expanded=False):
+        for review in reviews:
+            st.caption(f'{review.get("agent")} · {review.get("status")} · {review.get("grounding_status", "NOT_AUDITED")}')
+            for claim in review.get('claims', []):
+                st.write(claim.get('claim_vi', ''))
+                st.code(claim.get('exact_quote', ''), language=None)
+                st.caption(f'Nguồn {claim.get("source_id")} · mã {claim.get("ticker")} · chỉ tiêu {claim.get("metric")} · kỳ {claim.get("period_end")} · đơn vị {claim.get("unit")}')
+        st.caption('Đối chiếu anchor không chứng minh suy luận đúng hoặc bảo đảm hiệu quả đầu tư.')
 
 
 def render_response_warnings(response: AssistantResponse) -> None:
@@ -136,18 +177,24 @@ def render_comparison_table(title: str, rows: list[dict], note: str | None = Non
     render_stock_table(title, rows, note)
 
 
-def render_chart(figure) -> None:
-    st.plotly_chart(figure, use_container_width=True, config={"displaylogo": False})
+def render_chart(figure, key=None) -> None:
+    st.plotly_chart(figure, use_container_width=True, config={"displaylogo": False}, key=key)
 
 
 def render_agent_status(response: AssistantResponse) -> None:
+    reports = response.metadata.get('agent_reports', [])
+    if reports:
+        latest = {item['agent']: item for item in reports}
+        st.markdown(' '.join(f'<span class="route-pill">● {html.escape(str(name).title())} · {html.escape(item["status"])}</span>'
+            for name, item in latest.items()), unsafe_allow_html=True)
+        return
     agents = []
     for event in response.agent_trace:
         name = event.agent.value.title()
         if name not in agents and name != "User":
             agents.append(name)
     if agents:
-        st.markdown(" ".join(f'<span class="route-pill">● {name} · Done</span>' for name in agents), unsafe_allow_html=True)
+        st.caption('Vai trò có trace: ' + ', '.join(agents) + ' — xem trạng thái tác vụ bên dưới.')
 
 
 def render_agent_trace(response: AssistantResponse) -> None:
@@ -160,12 +207,16 @@ def render_agent_trace(response: AssistantResponse) -> None:
             st.caption(f"Task budget: {response.metadata.get('task_plan_budget_units', 0)} units")
             st.json(task_plan, expanded=False)
         for event in response.agent_trace:
-            tool = f" · Tool: `{event.tool}`" if event.tool else ""
+            tool = f" · Tool: `{html.escape(event.tool)}`" if event.tool else ""
             st.markdown(
                 f'<div class="trace-row"><span class="trace-agent">{event.agent.value.title()}</span> '
-                f'· {event.phase} · {event.action}{tool}<br><small>{event.detail}</small></div>',
+                f'· {html.escape(event.phase)} · {html.escape(event.action)}{tool}<br><small>{html.escape(event.detail)}</small></div>',
                 unsafe_allow_html=True,
             )
+        events = response.metadata.get('progress_events', [])
+        if events:
+            st.dataframe(pd.DataFrame([{key: event.get(key) for key in ('sequence', 'node', 'attempt', 'status', 'latency_ms')}
+                for event in events]), hide_index=True, use_container_width=True)
         messages = response.metadata.get("agent_messages", [])
         if messages:
             st.markdown("##### Agent communication")
@@ -224,9 +275,11 @@ def render_data_freshness(response: AssistantResponse) -> None:
         with st.expander("Research citations", expanded=False):
             for citation in citations:
                 published = citation.get("published_at", "unknown")
+                period = citation.get("reporting_period", {})
+                period_label = period.get("label", "Chưa xác định")
                 st.markdown(
                     f"**[{citation['title']}]({citation['source_url']})** · {citation['publisher']}  \n"
-                    f"Published: `{published}` · retrieval score: `{citation['retrieval_score']:.3f}` · "
+                    f"Dữ liệu đến kỳ: **{period_label}** · công bố: `{published}` · retrieval score: `{citation['retrieval_score']:.3f}` · "
                     f"chunk: `{citation['chunk_id']}`"
                 )
 

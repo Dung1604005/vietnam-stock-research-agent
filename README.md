@@ -4,6 +4,8 @@ An educational ChatGPT-like assistant for **Intelligent Agents and Multi-Agent S
 
 > Educational analysis only. This is not financial advice, an automated trading system, or a broker integration.
 
+Phase 6–8 engineering update: [implementation and training handoff](docs/phase-6-8-implementation.md), [Qwen3 Colab fine-tuning](docs/llm-finetuning-data-policy.md), [LSTM V3 model card](docs/lstm-v3-model-card.md), and [Quick/Deep/Offline demo runbook](docs/demo-runbook.md). V2 remains the default; new models are not approved merely because software tests pass.
+
 ## What the demo shows
 
 - Goal, observation, reasoning summary, planning, action, tool use, and memory/state
@@ -58,9 +60,11 @@ Open **View semantic interpretation** under a response to inspect normalized inp
 
 The local fallback uses semantic similarity against a varied example bank plus deterministic ticker/indicator/period extraction. When `STOCK_AGENT_LLM_PROVIDER=colab_qwen`, `openai`, or `ollama`, the same pipeline can use typed Pydantic schemas; provider failure safely returns to deterministic behavior with an auditable reason. `IntentRouter` then emits only allowlisted, validator-checked task steps—it does not grant the model arbitrary tool access. See [semantic NLU](docs/semantic-nlu.md) and [Phase B](docs/phase-b-semantic-routing.md).
 
-The active LLM profile uses `Qwen/Qwen2.5-3B-Instruct` on a Google Colab GPU. Manager uses it to choose a typed intent and to produce one grounded final summary; Technical uses it only to select up to two allowlisted indicator tools. Configure the temporary URL and token printed by [the Colab server notebook](notebooks/serve_qwen25_3b_colab.ipynb). Full setup and data-boundary details are in [Google Colab Qwen setup](docs/colab-qwen-setup.md).
+The new training target and client default are `Qwen/Qwen3-4B-Instruct-2507`; use [the Colab QLoRA notebook](notebooks/finetune_qwen3_4b_lora_v1.ipynb) for interactive training, export and reload. It does not start a server or automatically approve an adapter. Existing `.env` settings and [the legacy Qwen2.5 endpoint notebook](notebooks/serve_qwen25_3b_colab.ipynb) are not silently migrated: an application endpoint must actually serve the configured model, and adapter requests must attest its identity. See [fine-tuning and integration boundaries](docs/llm-finetuning-data-policy.md).
 
-Set `STOCK_AGENT_LLM_SPECIALISTS_ENABLED=true` and `STOCK_AGENT_LLM_SPECIALIST_ROLES=technical` for the recommended demo profile. LSTM forecasting runs immediately after Data, Qwen selects supplemental technical checks, and Python calculates every value. Every LLM call uses a Pydantic JSON schema, filters citations against real source IDs, fails back to the deterministic result, and cannot mutate scores, signals, vetoes, forecasts, or the final recommendation.
+To serve **Qwen3 base** to the agents without retraining, use [the Qwen3 inference notebook](notebooks/serve_qwen3_4b_colab.ipynb) and [connection instructions](docs/qwen3-agent-setup.md). It loads NF4/FP16 weights once, authenticates requests, checks JSON schemas, and does not activate the synthetic NLU adapter. Public publication is opt-in and requires an environment whose hosting policies allow it; Colab Free is not an assured API backend.
+
+Set `STOCK_AGENT_LLM_SPECIALISTS_ENABLED=true` and `STOCK_AGENT_LLM_SPECIALIST_ROLES=technical,fundamental,risk` for the deeper classroom profile, or select fewer roles to reduce calls. LSTM forecasting runs after Data; Qwen can select supplemental technical checks and review specialist evidence, while Python calculates every numeric value. LLM calls use typed schemas and evidence validators, fail back to deterministic results, and cannot directly mutate scores, signals, vetoes, forecasts or the final recommendation. QUICK and OFFLINE use zero LLM calls.
 
 For lower latency, keep `STOCK_AGENT_LLM_SEMANTIC_ENABLED=false` and `STOCK_AGENT_LLM_ANALYST_ENABLED=false`. Manager then makes one small routing call and one final synthesis call, while quick screening never invokes the model for all 100 symbols. If Colab is unavailable, both Manager and Technical preserve the deterministic result.
 
@@ -133,7 +137,7 @@ CLI with any valid Vietnamese ticker:
 Chat UI:
 
 ```powershell
-.\.venv\Scripts\streamlit.exe run app\streamlit_app.py
+.\.venv\Scripts\python.exe -m streamlit run app\streamlit_app.py
 ```
 
 Tests:
@@ -182,7 +186,7 @@ vnstock/vnai normally writes first-run notices and configuration under the Windo
 
 ## LLM providers
 
-`LLMProvider` has Colab Qwen, Mock/deterministic, OpenAI, and legacy Ollama adapters. The configured demo path is Colab Qwen and needs no paid model API, but the Colab runtime and its temporary tunnel must stay active. No LLM owns indicator calculations, risk vetoes, or the final safety policy. Install the OpenAI adapter only when needed:
+`LLMProvider` has Colab Qwen, Mock/deterministic, OpenAI, and legacy Ollama adapters. The configured demo path is remote Qwen and needs no paid model API in the code. External API hosting still depends on the chosen runtime's policies and resources; Colab Free restricts primarily external-web-UI usage. No LLM owns indicator calculations, risk vetoes, or the final safety policy. Install the OpenAI adapter only when needed:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install --cache-dir .cache\pip -e ".[llm]"
@@ -206,6 +210,8 @@ vnstock/vnai normally writes first-run notices and configuration under the Windo
 | Multi-Agent | Parallel branches, join, supervisor cycle |
 
 ## Suggested presentation script
+
+Phase 8 adds request-scoped **STANDARD / QUICK / DEEP / OFFLINE** modes, actual node lifecycle events, local-only readiness, checksum-verified full-OHLCV replay bundles, and sanitized Markdown/HTML/audit JSON exports. QUICK disables LLM calls but can fetch market data; OFFLINE denies outbound retrieval and uses explicitly selected private replay/KB data with original dates. Profile selection never rewrites `.env`. See the [5–10 minute demo runbook](docs/demo-runbook.md) for capture commands, budgets, privacy boundaries and rehearsal checks. Model training/validation remains separate from UI readiness; no newly trained artifact is automatically approved.
 
 1. Ask `Phân tích FPT cho tôi` and open **View agent activity**.
 2. Point to Manager's plan, Data source/session count, parallel specialists and Risk critique.

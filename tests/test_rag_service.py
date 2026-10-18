@@ -41,10 +41,10 @@ class GroundedProvider:
 
 
 def build_store(name: str) -> ResearchStore:
-    store = ResearchStore(TEST_ROOT / name, embedding_provider=TopicEmbeddingProvider())
+    store = ResearchStore(TEST_ROOT / ("period-" + name), embedding_provider=TopicEmbeddingProvider())
     store.ingest_text(
-        text="FPT reported revenue growth from overseas technology services.",
-        title="FPT earnings", document_type=ResearchDocumentType.EARNINGS_RELEASE,
+        text="FPT Q3 2026 reported revenue growth from overseas technology services.",
+        title="FPT earnings Q3 2026", document_type=ResearchDocumentType.EARNINGS_RELEASE,
         source_url="https://example.com/fpt-growth", publisher="FPT IR",
         published_at=datetime(2026, 10, 1, tzinfo=timezone.utc), tickers=["FPT"],
     )
@@ -61,7 +61,7 @@ def test_vector_similarity_retrieves_ticker_filtered_chunk() -> None:
     store = build_store("vector.sqlite3")
     bundle = store.search_vector("tăng trưởng doanh thu", ticker="FPT")
     assert bundle.citations
-    assert bundle.citations[0].title == "FPT earnings"
+    assert bundle.citations[0].title == "FPT earnings Q3 2026"
     assert bundle.citations[0].retrieval_score == 1.0
     assert bundle.citations[0].retrieval_modes == ["vector"]
     assert store.reindex_embeddings() == 2

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 
 from stock_multi_agent.agents.base_agent import BaseAgent
 from stock_multi_agent.models.agent_contracts import AgentSpec, FundamentalAgentContext
@@ -6,6 +7,7 @@ from stock_multi_agent.models.analysis import EvidenceItem, FundamentalAnalysis,
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.tools.financial_data import FinancialToolkit
+from stock_multi_agent.services.financial_facts import build_financial_evidence
 
 
 class FundamentalAgent(BaseAgent):
@@ -15,9 +17,9 @@ class FundamentalAgent(BaseAgent):
         role=name,
         goal=goal,
         required_context=["market_data.financials", "financial_statements", "research_evidence"],
-        allowed_tools=["financial_metric_normalization", "sector_template", "quality_weighting"],
+        allowed_tools=["financial_metric_normalization", "sector_template", "quality_weighting", 'structured_llm_review', 'financial_fact_proposals'],
         output_type="FundamentalAnalysis",
-        can_use_llm=False,
+        can_use_llm=True,
         decision_constraints=[
             "Never infer a missing financial value from prose",
             "Reduce confidence when evidence is stale or low quality",
@@ -29,12 +31,13 @@ class FundamentalAgent(BaseAgent):
         self.tools = toolkit
         self.llm_advisor = llm_advisor
 
-    def run(self, state: AgentState) -> dict[str, object]:
+    def run(self, state: AgentState, allow_llm_review: bool = True) -> dict[str, object]:
         context = FundamentalAgentContext.from_state(state)
         metrics = context.market_data.financials
         research_context = self._research_context(state)
         evidence_reliability, quality_notes = self._financial_reliability(state)
         statement_metrics = self._statement_metrics(state)
+        financial_evidence = build_financial_evidence(state.market_data)
         stale_ratio_metrics = any(
             issue.code == "STALE_FINANCIAL_RATIOS"
             for issue in state.market_data.quality_report.issues
@@ -192,24 +195,27 @@ class FundamentalAgent(BaseAgent):
             *[source.source_id for source in state.market_data.source_refs],
             *[citation.chunk_id for citation in state.research_evidence],
         ]
-        llm_review = self.llm_review(
-            "Interpret business quality, valuation tensions, and missing fundamental evidence",
-            {
-                "ticker": state.ticker,
-                "horizon": state.investment_horizon,
-                "deterministic_result": result.model_dump(mode="json"),
-                "quality_status": state.market_data.quality_report.status.value,
-                "data_warnings": state.market_data.warnings,
-            },
-            source_ids,
-        )
+        # Derived values carry only their actual input sources and reporting periods.
+        used = {'revenue_growth': 'reported_revenue_growth', 'profit_growth': 'reported_profit_growth',
+                'cash_conversion': 'cash_conversion'}
+        for item in financial_evidence['derived_metrics']:
+            if used.get(item['metric']) in result.feature_contributions:
+                result.evidence.append(EvidenceItem.model_validate(item['evidence']))
+        result.unavailable_metrics.extend(financial_evidence['limitations'][:8])
+        fact_proposals = self.llm_advisor.map_financial_facts(state.research_evidence) if (
+            os.getenv('STOCK_AGENT_LLM_FACT_MAPPING_ENABLED', 'false').lower() in {'true', '1', 'on'}
+            and
+            state.allow_llm_planning and allow_llm_review and state.market_data.financials.available_count() < 3
+            and self.llm_advisor is not None and hasattr(self.llm_advisor, 'map_financial_facts')) else []
+        llm_review = self.review_result(state, result) if allow_llm_review else None
         if llm_review is not None:
             traces.append(self.event(
-                "REASON", "LLM_FUNDAMENTAL_REVIEW", f"Structured LLM review={llm_review.status}", "local_llm",
+                "REASON", "LLM_FUNDAMENTAL_REVIEW", f"Structured LLM review={llm_review.status}", "configured_llm",
             ))
         traces.append(self.event("ACT", "SEND_RESULT", f"Fundamental signal={result.signal.value}, confidence={result.confidence:.2f}"))
         return {
             "fundamental_result": result,
+            "financial_fact_proposals": fact_proposals,
             "messages": [self.message(AgentName.MANAGER, MessageType.RESULT, "Fundamental analysis complete", result.model_dump(mode="json"), result.confidence)],
             "llm_reviews": [llm_review] if llm_review is not None else [],
             "trace": traces,
@@ -226,6 +232,34 @@ class FundamentalAgent(BaseAgent):
                 evidence_count=len(result.evidence),
             )],
         }
+
+    def review_result(self, state, result):
+        if not state.allow_llm_planning:
+            return None
+        canonical = build_financial_evidence(state.market_data)
+        canonical['normalized_facts'] = sorted(canonical['normalized_facts'],
+            key=lambda item: item.get('period_end') or '', reverse=True)[:12]
+        canonical['limitations'] = canonical['limitations'][:6]
+        for item in canonical['normalized_facts']:
+            # The evidence pack must pair the reported value with its reported unit.
+            item['unit'] = item['reported_unit']
+            if item.get('evidence_quote'):
+                item['evidence_quote'] = item['evidence_quote'][:500]
+        result_payload = result.model_dump(mode='json')
+        result_payload['evidence'] = result_payload['evidence'][:12]
+        result_payload['unavailable_metrics'] = result_payload['unavailable_metrics'][:10]
+        return self.llm_review('Đánh giá chất lượng doanh nghiệp, tăng trưởng, định giá và dòng tiền', {
+            'ticker': state.ticker, 'horizon': state.investment_horizon,
+            'reported_metrics': state.market_data.financials.model_dump(mode='json'),
+            'canonical_financial_evidence': canonical,
+            'statements': [item.model_dump(mode='json') for item in sorted(state.market_data.financial_statement_observations,
+                key=lambda item: str(item.period_end or ''))[-12:]],
+            'metric_periods': [item.model_dump(mode='json') for item in state.market_data.financial_observations[:12]],
+            'source_provenance': [{key: item.model_dump(mode='json')[key] for key in ('source_id', 'provider', 'data_kind', 'as_of', 'fetched_at', 'source_url')} for item in state.market_data.source_refs],
+            'research_context': [item.model_dump(mode='json') for item in state.research_evidence[:2]],
+            'deterministic_result': result_payload,
+            'quality_status': state.market_data.quality_report.status.value, 'data_warnings': state.market_data.warnings,
+        }, [*[item.source_id for item in state.market_data.source_refs], *[item.chunk_id for item in state.research_evidence]])
 
     @staticmethod
     def _research_context(state: AgentState) -> list[EvidenceItem]:
@@ -279,54 +313,39 @@ class FundamentalAgent(BaseAgent):
 
     @staticmethod
     def _statement_metrics(state: AgentState) -> dict[str, float | None]:
-        """Calculate only same-unit, period-labelled reported values."""
+        """Use the same conservative basis/unit/period checks as financial charts."""
         if state.market_data is None:
             return {}
-        grouped: dict[str, list[tuple[object, float]]] = {}
-        for observation in state.market_data.financial_statement_observations:
-            if observation.period_end is None or observation.frequency != "annual":
-                continue
-            grouped.setdefault(observation.metric, []).append((observation.period_end, observation.value))
-        values: dict[str, float | None] = {}
-        for metric, series in grouped.items():
-            ordered = sorted(series, key=lambda item: item[0])
-            if len(ordered) >= 2 and ordered[-2][1] != 0:
-                values[f"{metric}_growth"] = ordered[-1][1] / ordered[-2][1] - 1
-        net_profit = grouped.get("net_profit", [])
-        operating_cash_flow = grouped.get("operating_cash_flow", [])
-        if net_profit and operating_cash_flow:
-            latest_profit_period, latest_profit = max(net_profit, key=lambda item: item[0])
-            latest_cash_period, latest_cash = max(operating_cash_flow, key=lambda item: item[0])
-            if latest_profit_period == latest_cash_period and latest_profit != 0:
-                values["cash_conversion"] = latest_cash / latest_profit
-        return values
+        return {item['metric']: item['value'] for item in
+                build_financial_evidence(state.market_data)['derived_metrics']}
 
     @staticmethod
     def _evidence(state: AgentState, label: str, value: str, fields: list[str]) -> EvidenceItem:
         data = state.market_data
         confidence, quality_notes = FundamentalAgent._financial_reliability(state)
-        financial_periods = [
-            observation.period_end
-            for observation in [
-                *(data.financial_observations if data else []),
-                *(data.financial_statement_observations if data else []),
-            ]
-            if observation.period_end is not None
-        ]
-        observation_source_ids = {
-            observation.source_id
-            for observation in [
-                *(data.financial_observations if data else []),
-                *(data.financial_statement_observations if data else []),
-            ]
-        }
+        derived_names = {'Reported revenue growth': 'revenue_growth', 'Reported profit growth': 'profit_growth',
+                         'Operating cash conversion': 'cash_conversion'}
+        if data and label in derived_names:
+            derived = next((item for item in build_financial_evidence(data)['derived_metrics']
+                            if item['metric'] == derived_names[label]), None)
+            if derived:
+                return EvidenceItem.model_validate({**derived['evidence'], 'label': label, 'value': value,
+                    'confidence': confidence})
+        metric = {'P/E': 'pe', 'P/B': 'pb', 'Debt/equity': 'debt_to_equity'}.get(label,
+            label.casefold().replace(' ', '_'))
+        expected = getattr(data.financials, metric, None) if data else None
+        # A different metric's latest period must never be presented as this value's period.
+        observations = [item for item in (data.financial_observations if data else [])
+                        if item.metric == metric and expected is not None and abs(item.value - expected) <= 1e-8]
+        financial_periods = [item.period_end for item in observations if item.period_end]
+        observation_source_ids = {item.source_id for item in observations}
         return EvidenceItem(
             label=label,
             value=value,
             input_fields=fields,
-            source_ids=sorted(observation_source_ids | ({
+            source_ids=sorted(observation_source_ids or ({
                 source.source_id for source in data.source_refs
-                if source.data_kind.value in {"FINANCIAL_RATIOS", "INCOME_STATEMENT", "BALANCE_SHEET", "CASH_FLOW"}
+                if source.data_kind.value == "FINANCIAL_RATIOS"
             } if data else set())),
             as_of=max(financial_periods) if financial_periods else None,
             confidence=confidence,
@@ -344,6 +363,7 @@ class FundamentalAgent(BaseAgent):
             "MISSING_FINANCIAL_PERIOD": 0.55,
             "INSUFFICIENT_FINANCIALS": 0.60,
             "STALE_FINANCIAL_RATIOS": 0.65,
+            "RESEARCH_EXTRACTED_FINANCIAL_FACTS": 0.65,
         }
         relevant_issues = [
             issue for issue in state.market_data.quality_report.issues

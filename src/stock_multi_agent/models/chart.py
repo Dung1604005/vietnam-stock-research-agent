@@ -17,6 +17,15 @@ class ChartType(str, Enum):
     VOLUME = "VOLUME"
     RSI = "RSI"
     MACD = "MACD"
+    BOLLINGER_BANDS = 'BOLLINGER_BANDS'
+    DRAWDOWN = 'DRAWDOWN'
+    VOLATILITY = 'VOLATILITY'
+    RETURNS = 'RETURNS'
+    REVENUE_PROFIT = 'REVENUE_PROFIT'
+    CASH_FLOW = 'CASH_FLOW'
+    GROWTH = 'GROWTH'
+    VALUATION = 'VALUATION'
+    PROFITABILITY = 'PROFITABILITY'
 
 
 class ChartRequest(BaseModel):
@@ -35,3 +44,5 @@ class ChartArtifact(BaseModel):
     source: str
     source_details: list[SourceReference] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    axis_unit: str = ''
+    explanation: str = ''

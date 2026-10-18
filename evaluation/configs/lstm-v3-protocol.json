@@ -1,0 +1,29 @@
+{
+  "schema_version": "lstm-v3-protocol-1",
+  "protocol_id": "single-ticker-v3a-2026-10-17",
+  "frozen_at": "2026-10-17T00:00:00+00:00",
+  "feature_version": "single-ticker-v3a-1",
+  "forecast_timing": "after source closing bar is available",
+  "window": 30,
+  "horizons": [1, 5],
+  "outer_folds": 3,
+  "seeds": [42, 123],
+  "gap_sessions": 5,
+  "primary_metric": "raw_return_mae",
+  "selection": "train and validation only; calibration block disjoint from model selection",
+  "baseline_names": ["zero", "persistence", "train_mean", "train_median", "ridge", "tree"],
+  "bootstrap": {"block_sessions": 5, "repetitions": 500, "confidence": 0.95},
+  "gate": {
+    "minimum_outer_folds": 3,
+    "minimum_winning_folds": 2,
+    "max_relative_loss_vs_ridge_tree": 0.01,
+    "minimum_forward_sessions": 40,
+    "require_forward_mae_ci_above_zero": true,
+    "require_direction_ci_above_majority": true,
+    "require_adjusted_prices_for_blend": true,
+    "maximum_technical_weight": 0.2
+  },
+  "test_reuse_policy": "All existing V2/V3/V4 viewed historical results are development-only; a new independent forward holdout is mandatory for promotion",
+  "universe_limitation": "Current source universe is not point-in-time and has survivorship bias",
+  "artifact_default": "shadow; V2 unchanged"
+}

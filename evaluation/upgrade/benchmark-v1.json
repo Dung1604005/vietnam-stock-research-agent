@@ -1,0 +1,4566 @@
+{
+  "version": "upgrade-synthetic-v1",
+  "provenance": "Author-created synthetic evaluation fixtures; NOT independent user holdout and NOT market observations. Labels specified before evaluation. Template counts must be reported.",
+  "nlu": [
+    {
+      "id": "nlu-FPT-0",
+      "template_group": "template-0",
+      "query": "Phân tích FPT trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-FPT-1",
+      "template_group": "template-1",
+      "query": "Đánh giá FPT",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật FPT",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ FPT 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-4",
+      "template_group": "template-4",
+      "query": "RSI của FPT hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-5",
+      "template_group": "template-5",
+      "query": "MACD FPT thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên FPT",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo FPT",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá FPT phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu FPT",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư FPT",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-11",
+      "template_group": "template-11",
+      "query": "FPT có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-FPT-12",
+      "template_group": "template-12",
+      "query": "Phân tích FPT trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-FPT-13",
+      "template_group": "template-13",
+      "query": "Nhận xét FPT trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-FPT-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật FPT trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "FPT"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-FPT-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của FPT",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "FPT"
+      ]
+    },
+    {
+      "id": "nlu-VNM-0",
+      "template_group": "template-0",
+      "query": "Phân tích VNM trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VNM-1",
+      "template_group": "template-1",
+      "query": "Đánh giá VNM",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật VNM",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ VNM 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-4",
+      "template_group": "template-4",
+      "query": "RSI của VNM hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-5",
+      "template_group": "template-5",
+      "query": "MACD VNM thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên VNM",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo VNM",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá VNM phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu VNM",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư VNM",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-11",
+      "template_group": "template-11",
+      "query": "VNM có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-VNM-12",
+      "template_group": "template-12",
+      "query": "Phân tích VNM trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-VNM-13",
+      "template_group": "template-13",
+      "query": "Nhận xét VNM trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-VNM-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật VNM trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VNM"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VNM-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của VNM",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VNM"
+      ]
+    },
+    {
+      "id": "nlu-HPG-0",
+      "template_group": "template-0",
+      "query": "Phân tích HPG trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-HPG-1",
+      "template_group": "template-1",
+      "query": "Đánh giá HPG",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật HPG",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ HPG 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-4",
+      "template_group": "template-4",
+      "query": "RSI của HPG hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-5",
+      "template_group": "template-5",
+      "query": "MACD HPG thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên HPG",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo HPG",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá HPG phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu HPG",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư HPG",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-11",
+      "template_group": "template-11",
+      "query": "HPG có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-HPG-12",
+      "template_group": "template-12",
+      "query": "Phân tích HPG trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-HPG-13",
+      "template_group": "template-13",
+      "query": "Nhận xét HPG trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-HPG-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật HPG trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "HPG"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-HPG-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của HPG",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "HPG"
+      ]
+    },
+    {
+      "id": "nlu-VCB-0",
+      "template_group": "template-0",
+      "query": "Phân tích VCB trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VCB-1",
+      "template_group": "template-1",
+      "query": "Đánh giá VCB",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật VCB",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ VCB 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-4",
+      "template_group": "template-4",
+      "query": "RSI của VCB hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-5",
+      "template_group": "template-5",
+      "query": "MACD VCB thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên VCB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo VCB",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá VCB phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu VCB",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư VCB",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-11",
+      "template_group": "template-11",
+      "query": "VCB có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-VCB-12",
+      "template_group": "template-12",
+      "query": "Phân tích VCB trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-VCB-13",
+      "template_group": "template-13",
+      "query": "Nhận xét VCB trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-VCB-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật VCB trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VCB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VCB-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của VCB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-0",
+      "template_group": "template-0",
+      "query": "Phân tích TCB trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-TCB-1",
+      "template_group": "template-1",
+      "query": "Đánh giá TCB",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật TCB",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ TCB 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-4",
+      "template_group": "template-4",
+      "query": "RSI của TCB hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-5",
+      "template_group": "template-5",
+      "query": "MACD TCB thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên TCB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo TCB",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá TCB phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu TCB",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư TCB",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-11",
+      "template_group": "template-11",
+      "query": "TCB có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-TCB-12",
+      "template_group": "template-12",
+      "query": "Phân tích TCB trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-TCB-13",
+      "template_group": "template-13",
+      "query": "Nhận xét TCB trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-TCB-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật TCB trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "TCB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-TCB-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của TCB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "TCB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-0",
+      "template_group": "template-0",
+      "query": "Phân tích MBB trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-MBB-1",
+      "template_group": "template-1",
+      "query": "Đánh giá MBB",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật MBB",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ MBB 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-4",
+      "template_group": "template-4",
+      "query": "RSI của MBB hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-5",
+      "template_group": "template-5",
+      "query": "MACD MBB thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên MBB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo MBB",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá MBB phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu MBB",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư MBB",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-11",
+      "template_group": "template-11",
+      "query": "MBB có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-MBB-12",
+      "template_group": "template-12",
+      "query": "Phân tích MBB trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-MBB-13",
+      "template_group": "template-13",
+      "query": "Nhận xét MBB trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-MBB-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật MBB trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "MBB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-MBB-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của MBB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "MBB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-0",
+      "template_group": "template-0",
+      "query": "Phân tích ACB trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-ACB-1",
+      "template_group": "template-1",
+      "query": "Đánh giá ACB",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật ACB",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ ACB 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-4",
+      "template_group": "template-4",
+      "query": "RSI của ACB hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-5",
+      "template_group": "template-5",
+      "query": "MACD ACB thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên ACB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo ACB",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá ACB phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu ACB",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư ACB",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-11",
+      "template_group": "template-11",
+      "query": "ACB có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-ACB-12",
+      "template_group": "template-12",
+      "query": "Phân tích ACB trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-ACB-13",
+      "template_group": "template-13",
+      "query": "Nhận xét ACB trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-ACB-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật ACB trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "ACB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-ACB-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của ACB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "ACB"
+      ]
+    },
+    {
+      "id": "nlu-BID-0",
+      "template_group": "template-0",
+      "query": "Phân tích BID trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-BID-1",
+      "template_group": "template-1",
+      "query": "Đánh giá BID",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật BID",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ BID 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-4",
+      "template_group": "template-4",
+      "query": "RSI của BID hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-5",
+      "template_group": "template-5",
+      "query": "MACD BID thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên BID",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo BID",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá BID phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu BID",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư BID",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-11",
+      "template_group": "template-11",
+      "query": "BID có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-BID-12",
+      "template_group": "template-12",
+      "query": "Phân tích BID trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-BID-13",
+      "template_group": "template-13",
+      "query": "Nhận xét BID trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-BID-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật BID trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "BID"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-BID-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của BID",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "BID"
+      ]
+    },
+    {
+      "id": "nlu-CTG-0",
+      "template_group": "template-0",
+      "query": "Phân tích CTG trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-CTG-1",
+      "template_group": "template-1",
+      "query": "Đánh giá CTG",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật CTG",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ CTG 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-4",
+      "template_group": "template-4",
+      "query": "RSI của CTG hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-5",
+      "template_group": "template-5",
+      "query": "MACD CTG thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên CTG",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo CTG",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá CTG phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu CTG",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư CTG",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-11",
+      "template_group": "template-11",
+      "query": "CTG có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-CTG-12",
+      "template_group": "template-12",
+      "query": "Phân tích CTG trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-CTG-13",
+      "template_group": "template-13",
+      "query": "Nhận xét CTG trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-CTG-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật CTG trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "CTG"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-CTG-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của CTG",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "CTG"
+      ]
+    },
+    {
+      "id": "nlu-VPB-0",
+      "template_group": "template-0",
+      "query": "Phân tích VPB trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VPB-1",
+      "template_group": "template-1",
+      "query": "Đánh giá VPB",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật VPB",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ VPB 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-4",
+      "template_group": "template-4",
+      "query": "RSI của VPB hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-5",
+      "template_group": "template-5",
+      "query": "MACD VPB thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên VPB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo VPB",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá VPB phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu VPB",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư VPB",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-11",
+      "template_group": "template-11",
+      "query": "VPB có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-VPB-12",
+      "template_group": "template-12",
+      "query": "Phân tích VPB trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-VPB-13",
+      "template_group": "template-13",
+      "query": "Nhận xét VPB trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-VPB-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật VPB trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VPB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VPB-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của VPB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VPB"
+      ]
+    },
+    {
+      "id": "nlu-SSI-0",
+      "template_group": "template-0",
+      "query": "Phân tích SSI trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-SSI-1",
+      "template_group": "template-1",
+      "query": "Đánh giá SSI",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật SSI",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ SSI 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-4",
+      "template_group": "template-4",
+      "query": "RSI của SSI hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-5",
+      "template_group": "template-5",
+      "query": "MACD SSI thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên SSI",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo SSI",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá SSI phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu SSI",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư SSI",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-11",
+      "template_group": "template-11",
+      "query": "SSI có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-SSI-12",
+      "template_group": "template-12",
+      "query": "Phân tích SSI trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-SSI-13",
+      "template_group": "template-13",
+      "query": "Nhận xét SSI trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-SSI-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật SSI trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "SSI"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-SSI-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của SSI",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "SSI"
+      ]
+    },
+    {
+      "id": "nlu-VND-0",
+      "template_group": "template-0",
+      "query": "Phân tích VND trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VND-1",
+      "template_group": "template-1",
+      "query": "Đánh giá VND",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật VND",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ VND 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-4",
+      "template_group": "template-4",
+      "query": "RSI của VND hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-5",
+      "template_group": "template-5",
+      "query": "MACD VND thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên VND",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo VND",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá VND phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu VND",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư VND",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-11",
+      "template_group": "template-11",
+      "query": "VND có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-VND-12",
+      "template_group": "template-12",
+      "query": "Phân tích VND trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-VND-13",
+      "template_group": "template-13",
+      "query": "Nhận xét VND trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-VND-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật VND trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VND"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VND-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của VND",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VND"
+      ]
+    },
+    {
+      "id": "nlu-MWG-0",
+      "template_group": "template-0",
+      "query": "Phân tích MWG trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-MWG-1",
+      "template_group": "template-1",
+      "query": "Đánh giá MWG",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật MWG",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ MWG 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-4",
+      "template_group": "template-4",
+      "query": "RSI của MWG hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-5",
+      "template_group": "template-5",
+      "query": "MACD MWG thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên MWG",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo MWG",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá MWG phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu MWG",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư MWG",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-11",
+      "template_group": "template-11",
+      "query": "MWG có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-MWG-12",
+      "template_group": "template-12",
+      "query": "Phân tích MWG trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-MWG-13",
+      "template_group": "template-13",
+      "query": "Nhận xét MWG trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-MWG-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật MWG trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "MWG"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-MWG-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của MWG",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "MWG"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-0",
+      "template_group": "template-0",
+      "query": "Phân tích PNJ trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-PNJ-1",
+      "template_group": "template-1",
+      "query": "Đánh giá PNJ",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật PNJ",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ PNJ 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-4",
+      "template_group": "template-4",
+      "query": "RSI của PNJ hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-5",
+      "template_group": "template-5",
+      "query": "MACD PNJ thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên PNJ",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo PNJ",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá PNJ phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu PNJ",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư PNJ",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-11",
+      "template_group": "template-11",
+      "query": "PNJ có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-PNJ-12",
+      "template_group": "template-12",
+      "query": "Phân tích PNJ trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-PNJ-13",
+      "template_group": "template-13",
+      "query": "Nhận xét PNJ trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-PNJ-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật PNJ trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "PNJ"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-PNJ-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của PNJ",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "PNJ"
+      ]
+    },
+    {
+      "id": "nlu-MSN-0",
+      "template_group": "template-0",
+      "query": "Phân tích MSN trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-MSN-1",
+      "template_group": "template-1",
+      "query": "Đánh giá MSN",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật MSN",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ MSN 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-4",
+      "template_group": "template-4",
+      "query": "RSI của MSN hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-5",
+      "template_group": "template-5",
+      "query": "MACD MSN thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên MSN",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo MSN",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá MSN phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu MSN",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư MSN",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-11",
+      "template_group": "template-11",
+      "query": "MSN có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-MSN-12",
+      "template_group": "template-12",
+      "query": "Phân tích MSN trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-MSN-13",
+      "template_group": "template-13",
+      "query": "Nhận xét MSN trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-MSN-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật MSN trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "MSN"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-MSN-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của MSN",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "MSN"
+      ]
+    },
+    {
+      "id": "nlu-VIC-0",
+      "template_group": "template-0",
+      "query": "Phân tích VIC trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VIC-1",
+      "template_group": "template-1",
+      "query": "Đánh giá VIC",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật VIC",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ VIC 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-4",
+      "template_group": "template-4",
+      "query": "RSI của VIC hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-5",
+      "template_group": "template-5",
+      "query": "MACD VIC thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên VIC",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo VIC",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá VIC phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu VIC",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư VIC",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-11",
+      "template_group": "template-11",
+      "query": "VIC có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VIC-12",
+      "template_group": "template-12",
+      "query": "Phân tích VIC trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-VIC-13",
+      "template_group": "template-13",
+      "query": "Nhận xét VIC trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-VIC-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật VIC trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VIC"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VIC-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của VIC",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VIC"
+      ]
+    },
+    {
+      "id": "nlu-VHM-0",
+      "template_group": "template-0",
+      "query": "Phân tích VHM trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VHM-1",
+      "template_group": "template-1",
+      "query": "Đánh giá VHM",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật VHM",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ VHM 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-4",
+      "template_group": "template-4",
+      "query": "RSI của VHM hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-5",
+      "template_group": "template-5",
+      "query": "MACD VHM thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên VHM",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo VHM",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá VHM phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu VHM",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư VHM",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-11",
+      "template_group": "template-11",
+      "query": "VHM có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-VHM-12",
+      "template_group": "template-12",
+      "query": "Phân tích VHM trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-VHM-13",
+      "template_group": "template-13",
+      "query": "Nhận xét VHM trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-VHM-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật VHM trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "VHM"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-VHM-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của VHM",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "VHM"
+      ]
+    },
+    {
+      "id": "nlu-GAS-0",
+      "template_group": "template-0",
+      "query": "Phân tích GAS trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-GAS-1",
+      "template_group": "template-1",
+      "query": "Đánh giá GAS",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật GAS",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ GAS 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-4",
+      "template_group": "template-4",
+      "query": "RSI của GAS hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-5",
+      "template_group": "template-5",
+      "query": "MACD GAS thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên GAS",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo GAS",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá GAS phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu GAS",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư GAS",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-11",
+      "template_group": "template-11",
+      "query": "GAS có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-GAS-12",
+      "template_group": "template-12",
+      "query": "Phân tích GAS trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-GAS-13",
+      "template_group": "template-13",
+      "query": "Nhận xét GAS trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-GAS-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật GAS trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "GAS"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-GAS-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của GAS",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "GAS"
+      ]
+    },
+    {
+      "id": "nlu-PLX-0",
+      "template_group": "template-0",
+      "query": "Phân tích PLX trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-PLX-1",
+      "template_group": "template-1",
+      "query": "Đánh giá PLX",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật PLX",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ PLX 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-4",
+      "template_group": "template-4",
+      "query": "RSI của PLX hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-5",
+      "template_group": "template-5",
+      "query": "MACD PLX thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên PLX",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo PLX",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá PLX phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu PLX",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư PLX",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-11",
+      "template_group": "template-11",
+      "query": "PLX có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-PLX-12",
+      "template_group": "template-12",
+      "query": "Phân tích PLX trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-PLX-13",
+      "template_group": "template-13",
+      "query": "Nhận xét PLX trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-PLX-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật PLX trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "PLX"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-PLX-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của PLX",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "PLX"
+      ]
+    },
+    {
+      "id": "nlu-SAB-0",
+      "template_group": "template-0",
+      "query": "Phân tích SAB trong 6 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-SAB-1",
+      "template_group": "template-1",
+      "query": "Đánh giá SAB",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-2",
+      "template_group": "template-2",
+      "query": "Phân tích kỹ thuật SAB",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-3",
+      "template_group": "template-3",
+      "query": "Xem biểu đồ SAB 3 tháng qua",
+      "expected_intent": "STOCK_CHART",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-4",
+      "template_group": "template-4",
+      "query": "RSI của SAB hiện tại bao nhiêu?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-5",
+      "template_group": "template-5",
+      "query": "MACD SAB thế nào?",
+      "expected_intent": "INDICATOR_QUERY",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-6",
+      "template_group": "template-6",
+      "query": "Tìm báo cáo thường niên SAB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-7",
+      "template_group": "template-7",
+      "query": "Tóm tắt báo cáo SAB",
+      "expected_intent": "DOCUMENT_QA",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-8",
+      "template_group": "template-8",
+      "query": "Dự báo giá SAB phiên tới",
+      "expected_intent": "FORECAST",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-9",
+      "template_group": "template-9",
+      "query": "Cho tôi link nguồn dữ liệu SAB",
+      "expected_intent": "SOURCE_REQUEST",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-10",
+      "template_group": "template-10",
+      "query": "Kiểm tra luận điểm đầu tư SAB",
+      "expected_intent": "THESIS_REVIEW",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-11",
+      "template_group": "template-11",
+      "query": "SAB có rủi ro gì?",
+      "expected_intent": "RISK_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ]
+    },
+    {
+      "id": "nlu-SAB-12",
+      "template_group": "template-12",
+      "query": "Phân tích SAB trong 1 năm tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ],
+      "expected_horizon": "1 year"
+    },
+    {
+      "id": "nlu-SAB-13",
+      "template_group": "template-13",
+      "query": "Nhận xét SAB trong 3 tháng tới",
+      "expected_intent": "STOCK_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ],
+      "expected_horizon": "3 months"
+    },
+    {
+      "id": "nlu-SAB-14",
+      "template_group": "template-14",
+      "query": "Phân tích kỹ thuật SAB trong 6 tháng tới",
+      "expected_intent": "TECHNICAL_ANALYSIS",
+      "expected_tickers": [
+        "SAB"
+      ],
+      "expected_horizon": "6 months"
+    },
+    {
+      "id": "nlu-SAB-15",
+      "template_group": "template-15",
+      "query": "Cho tôi báo cáo tài chính của SAB",
+      "expected_intent": "RESEARCH",
+      "expected_tickers": [
+        "SAB"
+      ]
+    }
+  ],
+  "rag": [
+    {
+      "id": "rag-rsi-0",
+      "query": "Giải thích RSI",
+      "expected_document_keys": [
+        "rsi"
+      ]
+    },
+    {
+      "id": "rag-rsi-1",
+      "query": "RSI thể hiện điều gì?",
+      "expected_document_keys": [
+        "rsi"
+      ]
+    },
+    {
+      "id": "rag-rsi-2",
+      "query": "Giới hạn của RSI là gì?",
+      "expected_document_keys": [
+        "rsi"
+      ]
+    },
+    {
+      "id": "rag-rsi-3",
+      "query": "Tôi cần tài liệu về RSI",
+      "expected_document_keys": [
+        "rsi"
+      ]
+    },
+    {
+      "id": "rag-macd-4",
+      "query": "Giải thích MACD",
+      "expected_document_keys": [
+        "macd"
+      ]
+    },
+    {
+      "id": "rag-macd-5",
+      "query": "MACD thể hiện điều gì?",
+      "expected_document_keys": [
+        "macd"
+      ]
+    },
+    {
+      "id": "rag-macd-6",
+      "query": "Giới hạn của MACD là gì?",
+      "expected_document_keys": [
+        "macd"
+      ]
+    },
+    {
+      "id": "rag-macd-7",
+      "query": "Tôi cần tài liệu về MACD",
+      "expected_document_keys": [
+        "macd"
+      ]
+    },
+    {
+      "id": "rag-pe-8",
+      "query": "Giải thích P/E",
+      "expected_document_keys": [
+        "pe"
+      ]
+    },
+    {
+      "id": "rag-pe-9",
+      "query": "P/E thể hiện điều gì?",
+      "expected_document_keys": [
+        "pe"
+      ]
+    },
+    {
+      "id": "rag-pe-10",
+      "query": "Giới hạn của P/E là gì?",
+      "expected_document_keys": [
+        "pe"
+      ]
+    },
+    {
+      "id": "rag-pe-11",
+      "query": "Tôi cần tài liệu về P/E",
+      "expected_document_keys": [
+        "pe"
+      ]
+    },
+    {
+      "id": "rag-pb-12",
+      "query": "Giải thích P/B",
+      "expected_document_keys": [
+        "pb"
+      ]
+    },
+    {
+      "id": "rag-pb-13",
+      "query": "P/B thể hiện điều gì?",
+      "expected_document_keys": [
+        "pb"
+      ]
+    },
+    {
+      "id": "rag-pb-14",
+      "query": "Giới hạn của P/B là gì?",
+      "expected_document_keys": [
+        "pb"
+      ]
+    },
+    {
+      "id": "rag-pb-15",
+      "query": "Tôi cần tài liệu về P/B",
+      "expected_document_keys": [
+        "pb"
+      ]
+    },
+    {
+      "id": "rag-roe-16",
+      "query": "Giải thích ROE",
+      "expected_document_keys": [
+        "roe"
+      ]
+    },
+    {
+      "id": "rag-roe-17",
+      "query": "ROE thể hiện điều gì?",
+      "expected_document_keys": [
+        "roe"
+      ]
+    },
+    {
+      "id": "rag-roe-18",
+      "query": "Giới hạn của ROE là gì?",
+      "expected_document_keys": [
+        "roe"
+      ]
+    },
+    {
+      "id": "rag-roe-19",
+      "query": "Tôi cần tài liệu về ROE",
+      "expected_document_keys": [
+        "roe"
+      ]
+    },
+    {
+      "id": "rag-roa-20",
+      "query": "Giải thích ROA",
+      "expected_document_keys": [
+        "roa"
+      ]
+    },
+    {
+      "id": "rag-roa-21",
+      "query": "ROA thể hiện điều gì?",
+      "expected_document_keys": [
+        "roa"
+      ]
+    },
+    {
+      "id": "rag-roa-22",
+      "query": "Giới hạn của ROA là gì?",
+      "expected_document_keys": [
+        "roa"
+      ]
+    },
+    {
+      "id": "rag-roa-23",
+      "query": "Tôi cần tài liệu về ROA",
+      "expected_document_keys": [
+        "roa"
+      ]
+    },
+    {
+      "id": "rag-eps-24",
+      "query": "Giải thích EPS",
+      "expected_document_keys": [
+        "eps"
+      ]
+    },
+    {
+      "id": "rag-eps-25",
+      "query": "EPS thể hiện điều gì?",
+      "expected_document_keys": [
+        "eps"
+      ]
+    },
+    {
+      "id": "rag-eps-26",
+      "query": "Giới hạn của EPS là gì?",
+      "expected_document_keys": [
+        "eps"
+      ]
+    },
+    {
+      "id": "rag-eps-27",
+      "query": "Tôi cần tài liệu về EPS",
+      "expected_document_keys": [
+        "eps"
+      ]
+    },
+    {
+      "id": "rag-drawdown-28",
+      "query": "Giải thích Drawdown",
+      "expected_document_keys": [
+        "drawdown"
+      ]
+    },
+    {
+      "id": "rag-drawdown-29",
+      "query": "Drawdown thể hiện điều gì?",
+      "expected_document_keys": [
+        "drawdown"
+      ]
+    },
+    {
+      "id": "rag-drawdown-30",
+      "query": "Giới hạn của Drawdown là gì?",
+      "expected_document_keys": [
+        "drawdown"
+      ]
+    },
+    {
+      "id": "rag-drawdown-31",
+      "query": "Tôi cần tài liệu về Drawdown",
+      "expected_document_keys": [
+        "drawdown"
+      ]
+    },
+    {
+      "id": "rag-volatility-32",
+      "query": "Giải thích Volatility",
+      "expected_document_keys": [
+        "volatility"
+      ]
+    },
+    {
+      "id": "rag-volatility-33",
+      "query": "Volatility thể hiện điều gì?",
+      "expected_document_keys": [
+        "volatility"
+      ]
+    },
+    {
+      "id": "rag-volatility-34",
+      "query": "Giới hạn của Volatility là gì?",
+      "expected_document_keys": [
+        "volatility"
+      ]
+    },
+    {
+      "id": "rag-volatility-35",
+      "query": "Tôi cần tài liệu về Volatility",
+      "expected_document_keys": [
+        "volatility"
+      ]
+    },
+    {
+      "id": "rag-liquidity-36",
+      "query": "Giải thích Thanh khoản",
+      "expected_document_keys": [
+        "liquidity"
+      ]
+    },
+    {
+      "id": "rag-liquidity-37",
+      "query": "Thanh khoản thể hiện điều gì?",
+      "expected_document_keys": [
+        "liquidity"
+      ]
+    },
+    {
+      "id": "rag-liquidity-38",
+      "query": "Giới hạn của Thanh khoản là gì?",
+      "expected_document_keys": [
+        "liquidity"
+      ]
+    },
+    {
+      "id": "rag-liquidity-39",
+      "query": "Tôi cần tài liệu về Thanh khoản",
+      "expected_document_keys": [
+        "liquidity"
+      ]
+    },
+    {
+      "id": "rag-dividend-40",
+      "query": "Giải thích Cổ tức",
+      "expected_document_keys": [
+        "dividend"
+      ]
+    },
+    {
+      "id": "rag-dividend-41",
+      "query": "Cổ tức thể hiện điều gì?",
+      "expected_document_keys": [
+        "dividend"
+      ]
+    },
+    {
+      "id": "rag-dividend-42",
+      "query": "Giới hạn của Cổ tức là gì?",
+      "expected_document_keys": [
+        "dividend"
+      ]
+    },
+    {
+      "id": "rag-dividend-43",
+      "query": "Tôi cần tài liệu về Cổ tức",
+      "expected_document_keys": [
+        "dividend"
+      ]
+    },
+    {
+      "id": "rag-split-44",
+      "query": "Giải thích Chia tách",
+      "expected_document_keys": [
+        "split"
+      ]
+    },
+    {
+      "id": "rag-split-45",
+      "query": "Chia tách thể hiện điều gì?",
+      "expected_document_keys": [
+        "split"
+      ]
+    },
+    {
+      "id": "rag-split-46",
+      "query": "Giới hạn của Chia tách là gì?",
+      "expected_document_keys": [
+        "split"
+      ]
+    },
+    {
+      "id": "rag-split-47",
+      "query": "Tôi cần tài liệu về Chia tách",
+      "expected_document_keys": [
+        "split"
+      ]
+    },
+    {
+      "id": "rag-capm-48",
+      "query": "Giải thích CAPM",
+      "expected_document_keys": [
+        "capm"
+      ]
+    },
+    {
+      "id": "rag-capm-49",
+      "query": "CAPM thể hiện điều gì?",
+      "expected_document_keys": [
+        "capm"
+      ]
+    },
+    {
+      "id": "rag-capm-50",
+      "query": "Giới hạn của CAPM là gì?",
+      "expected_document_keys": [
+        "capm"
+      ]
+    },
+    {
+      "id": "rag-capm-51",
+      "query": "Tôi cần tài liệu về CAPM",
+      "expected_document_keys": [
+        "capm"
+      ]
+    },
+    {
+      "id": "rag-sharpe-52",
+      "query": "Giải thích Sharpe",
+      "expected_document_keys": [
+        "sharpe"
+      ]
+    },
+    {
+      "id": "rag-sharpe-53",
+      "query": "Sharpe thể hiện điều gì?",
+      "expected_document_keys": [
+        "sharpe"
+      ]
+    },
+    {
+      "id": "rag-sharpe-54",
+      "query": "Giới hạn của Sharpe là gì?",
+      "expected_document_keys": [
+        "sharpe"
+      ]
+    },
+    {
+      "id": "rag-sharpe-55",
+      "query": "Tôi cần tài liệu về Sharpe",
+      "expected_document_keys": [
+        "sharpe"
+      ]
+    },
+    {
+      "id": "rag-bias-56",
+      "query": "Giải thích Look-ahead",
+      "expected_document_keys": [
+        "bias"
+      ]
+    },
+    {
+      "id": "rag-bias-57",
+      "query": "Look-ahead thể hiện điều gì?",
+      "expected_document_keys": [
+        "bias"
+      ]
+    },
+    {
+      "id": "rag-bias-58",
+      "query": "Giới hạn của Look-ahead là gì?",
+      "expected_document_keys": [
+        "bias"
+      ]
+    },
+    {
+      "id": "rag-bias-59",
+      "query": "Tôi cần tài liệu về Look-ahead",
+      "expected_document_keys": [
+        "bias"
+      ]
+    },
+    {
+      "id": "rag-survivor-60",
+      "query": "Giải thích Survivorship",
+      "expected_document_keys": [
+        "survivor"
+      ]
+    },
+    {
+      "id": "rag-survivor-61",
+      "query": "Survivorship thể hiện điều gì?",
+      "expected_document_keys": [
+        "survivor"
+      ]
+    },
+    {
+      "id": "rag-survivor-62",
+      "query": "Giới hạn của Survivorship là gì?",
+      "expected_document_keys": [
+        "survivor"
+      ]
+    },
+    {
+      "id": "rag-survivor-63",
+      "query": "Tôi cần tài liệu về Survivorship",
+      "expected_document_keys": [
+        "survivor"
+      ]
+    },
+    {
+      "id": "rag-cashflow-64",
+      "query": "Giải thích Dòng tiền",
+      "expected_document_keys": [
+        "cashflow"
+      ]
+    },
+    {
+      "id": "rag-cashflow-65",
+      "query": "Dòng tiền thể hiện điều gì?",
+      "expected_document_keys": [
+        "cashflow"
+      ]
+    },
+    {
+      "id": "rag-cashflow-66",
+      "query": "Giới hạn của Dòng tiền là gì?",
+      "expected_document_keys": [
+        "cashflow"
+      ]
+    },
+    {
+      "id": "rag-cashflow-67",
+      "query": "Tôi cần tài liệu về Dòng tiền",
+      "expected_document_keys": [
+        "cashflow"
+      ]
+    },
+    {
+      "id": "rag-margin-68",
+      "query": "Giải thích Biên lợi nhuận",
+      "expected_document_keys": [
+        "margin"
+      ]
+    },
+    {
+      "id": "rag-margin-69",
+      "query": "Biên lợi nhuận thể hiện điều gì?",
+      "expected_document_keys": [
+        "margin"
+      ]
+    },
+    {
+      "id": "rag-margin-70",
+      "query": "Giới hạn của Biên lợi nhuận là gì?",
+      "expected_document_keys": [
+        "margin"
+      ]
+    },
+    {
+      "id": "rag-margin-71",
+      "query": "Tôi cần tài liệu về Biên lợi nhuận",
+      "expected_document_keys": [
+        "margin"
+      ]
+    },
+    {
+      "id": "rag-diversify-72",
+      "query": "Giải thích Đa dạng hóa",
+      "expected_document_keys": [
+        "diversify"
+      ]
+    },
+    {
+      "id": "rag-diversify-73",
+      "query": "Đa dạng hóa thể hiện điều gì?",
+      "expected_document_keys": [
+        "diversify"
+      ]
+    },
+    {
+      "id": "rag-diversify-74",
+      "query": "Giới hạn của Đa dạng hóa là gì?",
+      "expected_document_keys": [
+        "diversify"
+      ]
+    },
+    {
+      "id": "rag-diversify-75",
+      "query": "Tôi cần tài liệu về Đa dạng hóa",
+      "expected_document_keys": [
+        "diversify"
+      ]
+    },
+    {
+      "id": "rag-dcf-76",
+      "query": "Giải thích DCF",
+      "expected_document_keys": [
+        "dcf"
+      ]
+    },
+    {
+      "id": "rag-dcf-77",
+      "query": "DCF thể hiện điều gì?",
+      "expected_document_keys": [
+        "dcf"
+      ]
+    },
+    {
+      "id": "rag-dcf-78",
+      "query": "Giới hạn của DCF là gì?",
+      "expected_document_keys": [
+        "dcf"
+      ]
+    },
+    {
+      "id": "rag-dcf-79",
+      "query": "Tôi cần tài liệu về DCF",
+      "expected_document_keys": [
+        "dcf"
+      ]
+    },
+    {
+      "id": "abstain-0",
+      "query": "Doanh thu FPT năm 2025 là bao nhiêu?",
+      "ticker": "FPT",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-1",
+      "query": "Tìm báo cáo mới nhất của TCB",
+      "ticker": "TCB",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-2",
+      "query": "Lợi nhuận VNM quý ba tăng bao nhiêu?",
+      "ticker": "VNM",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-3",
+      "query": "Giá HPG đóng cửa hôm qua là bao nhiêu?",
+      "ticker": "HPG",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-4",
+      "query": "VCB có công bố cổ tức mới không?",
+      "ticker": "VCB",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-5",
+      "query": "Nợ xấu MBB hiện tại ở mức nào?",
+      "ticker": "MBB",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-6",
+      "query": "MWG có bao nhiêu cửa hàng đang hoạt động?",
+      "ticker": "MWG",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-7",
+      "query": "Biên lợi nhuận MSN trong báo cáo mới nhất",
+      "ticker": "MSN",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-8",
+      "query": "Dự án nào của VIC mới công bố?",
+      "ticker": "VIC",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-9",
+      "query": "Kết quả kinh doanh ACB tháng này",
+      "ticker": "ACB",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-10",
+      "query": "Thời tiết Đà Lạt ngày mai có mưa không?",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-11",
+      "query": "Công thức nấu món canh chua cá",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-12",
+      "query": "Kết quả trận bóng đá tối qua",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-13",
+      "query": "Chỉ đường đi đến sân bay Nội Bài",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-14",
+      "query": "Tôi muốn học cách trồng hoa lan",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-15",
+      "query": "Cách sửa máy giặt bị rò nước",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-16",
+      "query": "Lịch chiếu phim cuối tuần tại Hà Nội",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-17",
+      "query": "Cách chăm sóc mèo bị rụng lông",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-18",
+      "query": "Làm bánh mì bơ tỏi bằng nồi chiên",
+      "expected_document_keys": []
+    },
+    {
+      "id": "abstain-19",
+      "query": "Lịch thi đấu cầu lông tuần này",
+      "expected_document_keys": []
+    }
+  ],
+  "documents": [
+    {
+      "key": "rsi",
+      "title": "Tài liệu kiểm thử: RSI",
+      "text": "RSI đo động lượng giá bằng mức tăng và giảm trung bình. RSI quá mua không đảm bảo giá sẽ giảm ngay.",
+      "source_url": "https://example.invalid/evaluation/rsi",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "macd",
+      "title": "Tài liệu kiểm thử: MACD",
+      "text": "MACD so sánh đường trung bình động nhanh và chậm. Giao cắt MACD phải được đọc cùng xu hướng và thanh khoản.",
+      "source_url": "https://example.invalid/evaluation/macd",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "pe",
+      "title": "Tài liệu kiểm thử: P/E",
+      "text": "P/E là giá mỗi cổ phiếu chia cho EPS. EPS âm khiến P/E khó có ý nghĩa để định giá.",
+      "source_url": "https://example.invalid/evaluation/pe",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "pb",
+      "title": "Tài liệu kiểm thử: P/B",
+      "text": "P/B là giá cổ phiếu chia cho giá trị sổ sách mỗi cổ phiếu. Chất lượng tài sản ảnh hưởng cách đọc P/B.",
+      "source_url": "https://example.invalid/evaluation/pb",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "roe",
+      "title": "Tài liệu kiểm thử: ROE",
+      "text": "ROE đo lợi nhuận sau thuế trên vốn chủ sở hữu bình quân. Đòn bẩy tài chính có thể làm ROE cao.",
+      "source_url": "https://example.invalid/evaluation/roe",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "roa",
+      "title": "Tài liệu kiểm thử: ROA",
+      "text": "ROA đo lợi nhuận sau thuế trên tổng tài sản bình quân. ROA cần được so sánh trong cùng ngành.",
+      "source_url": "https://example.invalid/evaluation/roa",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "eps",
+      "title": "Tài liệu kiểm thử: EPS",
+      "text": "EPS là lợi nhuận thuộc cổ đông phổ thông chia cho số cổ phiếu bình quân gia quyền. EPS chịu ảnh hưởng pha loãng.",
+      "source_url": "https://example.invalid/evaluation/eps",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "drawdown",
+      "title": "Tài liệu kiểm thử: Drawdown",
+      "text": "Drawdown là mức giảm từ đỉnh trước đó đến giá trị hiện tại. Maximum drawdown là mức giảm xấu nhất trong giai đoạn.",
+      "source_url": "https://example.invalid/evaluation/drawdown",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "volatility",
+      "title": "Tài liệu kiểm thử: Volatility",
+      "text": "Volatility đo độ phân tán lợi suất và không phân biệt biến động tăng hay giảm. Cửa sổ đo ảnh hưởng volatility.",
+      "source_url": "https://example.invalid/evaluation/volatility",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "liquidity",
+      "title": "Tài liệu kiểm thử: Thanh khoản",
+      "text": "Thanh khoản là khả năng giao dịch mà không tác động đáng kể đến giá. Chênh lệch mua bán và độ sâu sổ lệnh phản ánh thanh khoản.",
+      "source_url": "https://example.invalid/evaluation/liquidity",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "dividend",
+      "title": "Tài liệu kiểm thử: Cổ tức",
+      "text": "Cổ tức tiền mặt là phân phối tiền cho cổ đông. Cổ tức không bảo đảm khả năng sinh lời tương lai.",
+      "source_url": "https://example.invalid/evaluation/dividend",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "split",
+      "title": "Tài liệu kiểm thử: Chia tách",
+      "text": "Chia tách cổ phiếu thay đổi số lượng và giá danh nghĩa. Chia tách không tự tạo giá trị kinh tế.",
+      "source_url": "https://example.invalid/evaluation/split",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "capm",
+      "title": "Tài liệu kiểm thử: CAPM",
+      "text": "CAPM liên hệ lợi suất kỳ vọng với beta và phần bù rủi ro thị trường. CAPM có các giả định cần kiểm tra.",
+      "source_url": "https://example.invalid/evaluation/capm",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "sharpe",
+      "title": "Tài liệu kiểm thử: Sharpe",
+      "text": "Sharpe so sánh lợi suất vượt lãi suất phi rủi ro với độ lệch chuẩn. Sharpe nhạy với thời kỳ quan sát.",
+      "source_url": "https://example.invalid/evaluation/sharpe",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "bias",
+      "title": "Tài liệu kiểm thử: Look-ahead",
+      "text": "Look-ahead bias xuất hiện khi dùng thông tin tương lai trong backtest. Split theo thời gian giúp giảm look-ahead.",
+      "source_url": "https://example.invalid/evaluation/bias",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "survivor",
+      "title": "Tài liệu kiểm thử: Survivorship",
+      "text": "Survivorship bias phát sinh khi chỉ chọn doanh nghiệp còn tồn tại. Survivorship làm đánh giá quá khứ lạc quan.",
+      "source_url": "https://example.invalid/evaluation/survivor",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "cashflow",
+      "title": "Tài liệu kiểm thử: Dòng tiền",
+      "text": "Dòng tiền hoạt động thể hiện tiền tạo ra từ hoạt động kinh doanh. Lợi nhuận kế toán không đồng nghĩa dòng tiền.",
+      "source_url": "https://example.invalid/evaluation/cashflow",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "margin",
+      "title": "Tài liệu kiểm thử: Biên lợi nhuận",
+      "text": "Biên lợi nhuận là lợi nhuận chia doanh thu. Khoản bất thường có thể làm biên lợi nhuận tăng tạm thời.",
+      "source_url": "https://example.invalid/evaluation/margin",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "diversify",
+      "title": "Tài liệu kiểm thử: Đa dạng hóa",
+      "text": "Đa dạng hóa phân bổ vốn vào tài sản có rủi ro khác nhau. Đa dạng hóa không loại bỏ rủi ro thị trường.",
+      "source_url": "https://example.invalid/evaluation/diversify",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    },
+    {
+      "key": "dcf",
+      "title": "Tài liệu kiểm thử: DCF",
+      "text": "DCF ước tính giá trị từ dòng tiền tương lai chiết khấu. Giả định tăng trưởng và chi phí vốn ảnh hưởng mạnh DCF.",
+      "source_url": "https://example.invalid/evaluation/dcf",
+      "publisher": "Author-created evaluation fixture",
+      "published_at": "2025-01-01T00:00:00+00:00"
+    }
+  ],
+  "screening": [
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 3 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 6 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 3 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Gợi ý 10 mã cổ phiếu đáng chú ý  trong 6 tháng tới",
+      "expected_count": 10,
+      "expected_horizon": "6 months"
+    },
+    {
+      "query": "Tìm cho tôi 1 mã cổ phiếu đáng chú ý ngành ngân hàng trong 3 tháng tới",
+      "expected_count": 1,
+      "expected_horizon": "3 months"
+    },
+    {
+      "query": "Lọc giúp tôi 5 mã cổ phiếu đáng chú ý ngành công nghệ trong 6 tháng tới",
+      "expected_count": 5,
+      "expected_horizon": "6 months"
+    }
+  ],
+  "single_stock": [
+    {
+      "query": "Phân tích FPT trong 3 tháng tới",
+      "expected_ticker": "FPT",
+      "horizon": "3 months",
+      "as_of": "2025-01-15"
+    },
+    {
+      "query": "Phân tích VNM trong 6 tháng tới",
+      "expected_ticker": "VNM",
+      "horizon": "6 months",
+      "as_of": "2025-01-15"
+    },
+    {
+      "query": "Phân tích HPG trong 12 tháng tới",
+      "expected_ticker": "HPG",
+      "horizon": "12 months",
+      "as_of": "2025-01-15"
+    },
+    {
+      "query": "Phân tích VCB trong 3 tháng tới",
+      "expected_ticker": "VCB",
+      "horizon": "3 months",
+      "as_of": "2025-02-15"
+    },
+    {
+      "query": "Phân tích TCB trong 6 tháng tới",
+      "expected_ticker": "TCB",
+      "horizon": "6 months",
+      "as_of": "2025-02-15"
+    },
+    {
+      "query": "Phân tích MBB trong 12 tháng tới",
+      "expected_ticker": "MBB",
+      "horizon": "12 months",
+      "as_of": "2025-02-15"
+    },
+    {
+      "query": "Phân tích ACB trong 3 tháng tới",
+      "expected_ticker": "ACB",
+      "horizon": "3 months",
+      "as_of": "2025-03-15"
+    },
+    {
+      "query": "Phân tích BID trong 6 tháng tới",
+      "expected_ticker": "BID",
+      "horizon": "6 months",
+      "as_of": "2025-03-15"
+    },
+    {
+      "query": "Phân tích CTG trong 12 tháng tới",
+      "expected_ticker": "CTG",
+      "horizon": "12 months",
+      "as_of": "2025-03-15"
+    },
+    {
+      "query": "Phân tích VPB trong 3 tháng tới",
+      "expected_ticker": "VPB",
+      "horizon": "3 months",
+      "as_of": "2025-04-15"
+    },
+    {
+      "query": "Phân tích SSI trong 6 tháng tới",
+      "expected_ticker": "SSI",
+      "horizon": "6 months",
+      "as_of": "2025-04-15"
+    },
+    {
+      "query": "Phân tích VND trong 12 tháng tới",
+      "expected_ticker": "VND",
+      "horizon": "12 months",
+      "as_of": "2025-04-15"
+    },
+    {
+      "query": "Phân tích MWG trong 3 tháng tới",
+      "expected_ticker": "MWG",
+      "horizon": "3 months",
+      "as_of": "2025-05-15"
+    },
+    {
+      "query": "Phân tích PNJ trong 6 tháng tới",
+      "expected_ticker": "PNJ",
+      "horizon": "6 months",
+      "as_of": "2025-05-15"
+    },
+    {
+      "query": "Phân tích MSN trong 12 tháng tới",
+      "expected_ticker": "MSN",
+      "horizon": "12 months",
+      "as_of": "2025-05-15"
+    },
+    {
+      "query": "Phân tích VIC trong 3 tháng tới",
+      "expected_ticker": "VIC",
+      "horizon": "3 months",
+      "as_of": "2025-06-15"
+    },
+    {
+      "query": "Phân tích VHM trong 6 tháng tới",
+      "expected_ticker": "VHM",
+      "horizon": "6 months",
+      "as_of": "2025-06-15"
+    },
+    {
+      "query": "Phân tích GAS trong 12 tháng tới",
+      "expected_ticker": "GAS",
+      "horizon": "12 months",
+      "as_of": "2025-06-15"
+    },
+    {
+      "query": "Phân tích PLX trong 3 tháng tới",
+      "expected_ticker": "PLX",
+      "horizon": "3 months",
+      "as_of": "2025-07-15"
+    },
+    {
+      "query": "Phân tích SAB trong 6 tháng tới",
+      "expected_ticker": "SAB",
+      "horizon": "6 months",
+      "as_of": "2025-07-15"
+    },
+    {
+      "query": "Phân tích FPT trong 12 tháng tới",
+      "expected_ticker": "FPT",
+      "horizon": "12 months",
+      "as_of": "2025-07-15"
+    },
+    {
+      "query": "Phân tích VNM trong 3 tháng tới",
+      "expected_ticker": "VNM",
+      "horizon": "3 months",
+      "as_of": "2025-08-15"
+    },
+    {
+      "query": "Phân tích HPG trong 6 tháng tới",
+      "expected_ticker": "HPG",
+      "horizon": "6 months",
+      "as_of": "2025-08-15"
+    },
+    {
+      "query": "Phân tích VCB trong 12 tháng tới",
+      "expected_ticker": "VCB",
+      "horizon": "12 months",
+      "as_of": "2025-08-15"
+    },
+    {
+      "query": "Phân tích TCB trong 3 tháng tới",
+      "expected_ticker": "TCB",
+      "horizon": "3 months",
+      "as_of": "2025-09-15"
+    },
+    {
+      "query": "Phân tích MBB trong 6 tháng tới",
+      "expected_ticker": "MBB",
+      "horizon": "6 months",
+      "as_of": "2025-09-15"
+    },
+    {
+      "query": "Phân tích ACB trong 12 tháng tới",
+      "expected_ticker": "ACB",
+      "horizon": "12 months",
+      "as_of": "2025-09-15"
+    },
+    {
+      "query": "Phân tích BID trong 3 tháng tới",
+      "expected_ticker": "BID",
+      "horizon": "3 months",
+      "as_of": "2025-10-15"
+    },
+    {
+      "query": "Phân tích CTG trong 6 tháng tới",
+      "expected_ticker": "CTG",
+      "horizon": "6 months",
+      "as_of": "2025-10-15"
+    },
+    {
+      "query": "Phân tích VPB trong 12 tháng tới",
+      "expected_ticker": "VPB",
+      "horizon": "12 months",
+      "as_of": "2025-10-15"
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "conflict-0",
+      "ticker": "FPT",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-1",
+      "ticker": "VNM",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-2",
+      "ticker": "HPG",
+      "technical": "BUY",
+      "fundamental": "UNKNOWN",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "FUNDAMENTAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-3",
+      "ticker": "VCB",
+      "technical": "UNKNOWN",
+      "fundamental": "HOLD",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "TECHNICAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-4",
+      "ticker": "TCB",
+      "technical": "BUY",
+      "fundamental": "BUY",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.8,
+      "risk": "HIGH",
+      "expected_kind": "HIGH_MEASURED_RISK",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-5",
+      "ticker": "MBB",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-6",
+      "ticker": "ACB",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-7",
+      "ticker": "BID",
+      "technical": "BUY",
+      "fundamental": "UNKNOWN",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "FUNDAMENTAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-8",
+      "ticker": "CTG",
+      "technical": "UNKNOWN",
+      "fundamental": "HOLD",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "TECHNICAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-9",
+      "ticker": "VPB",
+      "technical": "BUY",
+      "fundamental": "BUY",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.8,
+      "risk": "HIGH",
+      "expected_kind": "HIGH_MEASURED_RISK",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-10",
+      "ticker": "SSI",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-11",
+      "ticker": "VND",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-12",
+      "ticker": "MWG",
+      "technical": "BUY",
+      "fundamental": "UNKNOWN",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "FUNDAMENTAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-13",
+      "ticker": "PNJ",
+      "technical": "UNKNOWN",
+      "fundamental": "HOLD",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "TECHNICAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-14",
+      "ticker": "MSN",
+      "technical": "BUY",
+      "fundamental": "BUY",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.8,
+      "risk": "HIGH",
+      "expected_kind": "HIGH_MEASURED_RISK",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-15",
+      "ticker": "VIC",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-16",
+      "ticker": "VHM",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-17",
+      "ticker": "GAS",
+      "technical": "BUY",
+      "fundamental": "UNKNOWN",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "FUNDAMENTAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-18",
+      "ticker": "PLX",
+      "technical": "UNKNOWN",
+      "fundamental": "HOLD",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "TECHNICAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-19",
+      "ticker": "SAB",
+      "technical": "BUY",
+      "fundamental": "BUY",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.8,
+      "risk": "HIGH",
+      "expected_kind": "HIGH_MEASURED_RISK",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-20",
+      "ticker": "FPT",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-21",
+      "ticker": "VNM",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-22",
+      "ticker": "HPG",
+      "technical": "BUY",
+      "fundamental": "UNKNOWN",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "FUNDAMENTAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-23",
+      "ticker": "VCB",
+      "technical": "UNKNOWN",
+      "fundamental": "HOLD",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "TECHNICAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-24",
+      "ticker": "TCB",
+      "technical": "BUY",
+      "fundamental": "BUY",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.8,
+      "risk": "HIGH",
+      "expected_kind": "HIGH_MEASURED_RISK",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-25",
+      "ticker": "MBB",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-26",
+      "ticker": "ACB",
+      "technical": "BUY",
+      "fundamental": "SELL",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "SPECIALIST_DISAGREEMENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-27",
+      "ticker": "BID",
+      "technical": "BUY",
+      "fundamental": "UNKNOWN",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.6,
+      "risk": "LOW",
+      "expected_kind": "FUNDAMENTAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "RESEARCH_FUNDAMENTAL"
+    },
+    {
+      "id": "conflict-28",
+      "ticker": "CTG",
+      "technical": "UNKNOWN",
+      "fundamental": "HOLD",
+      "technical_confidence": 0.6,
+      "fundamental_confidence": 0.8,
+      "risk": "LOW",
+      "expected_kind": "TECHNICAL_EVIDENCE_INSUFFICIENT",
+      "expected_action": "TECHNICAL"
+    },
+    {
+      "id": "conflict-29",
+      "ticker": "VPB",
+      "technical": "BUY",
+      "fundamental": "BUY",
+      "technical_confidence": 0.8,
+      "fundamental_confidence": 0.8,
+      "risk": "HIGH",
+      "expected_kind": "HIGH_MEASURED_RISK",
+      "expected_action": "TECHNICAL"
+    }
+  ]
+}

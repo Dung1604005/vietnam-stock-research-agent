@@ -1,4 +1,5 @@
 from __future__ import annotations
+from stock_multi_agent.services.request_telemetry import observed
 
 import os
 import re
@@ -526,7 +527,10 @@ class WebResearchService:
         enabled = os.getenv("STOCK_AGENT_COMPANY_NAME_LOOKUP_ENABLED", "true").strip().lower()
         return VnstockCompanyNameResolver() if enabled in {"1", "true", "yes", "on"} else DisabledCompanyNameResolver()
 
+    @observed("research.web_search", "tool")
     def search(self, query: str, ticker: str | None = None, limit: int = 5) -> list[WebCitation]:
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('research.web_search')
         if not query or not query.strip():
             raise WebResearchError("Web search query cannot be empty.")
         retrieved_at = datetime.now(timezone.utc)
