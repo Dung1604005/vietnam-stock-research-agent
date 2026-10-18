@@ -199,7 +199,7 @@ if prompt:
     response.metadata['browser_actions'] = open_response_actions(
         response, prompt, state=st.session_state, host=browser_host,
         execution_mode=execution_mode,
-        enabled=st.session_state.get('interaction_auto_open', True),
+        enabled=st.session_state.get('interaction_auto_open', False),
         max_tabs=st.session_state.get('interaction_max_tabs', 3),
         broker_url_template=st.session_state.get('interaction_broker_template') or None,
         broker_name=st.session_state.get('interaction_broker_name') or 'VNDIRECT')

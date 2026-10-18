@@ -192,6 +192,10 @@ class IntentRouter:
             QueryIntent.UNKNOWN: [RouteStep.CHAT],
         }
         steps = list(routes.get(intent, [RouteStep.CHAT]))
+        if intent == QueryIntent.STOCK_DISCOVERY and query.filters:
+            # Screening owns per-ticker data/indicator evaluation. A predicate
+            # query needs no separate post-screen specialist analysis.
+            steps = [RouteStep.SCREENING]
         if intent == QueryIntent.EXPLANATION and query.tickers:
             steps = [RouteStep.DATA, RouteStep.TECHNICAL, RouteStep.FUNDAMENTAL, RouteStep.RISK, RouteStep.MANAGER]
         fundamental_indicators = {"PE", "PB", "ROE", "ROA", "EPS"}

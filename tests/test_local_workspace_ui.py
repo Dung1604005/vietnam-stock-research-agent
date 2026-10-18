@@ -17,7 +17,7 @@ def test_sidebar_persists_watchlist_notes_and_preferences(tmp_path, monkeypatch)
     app = panel()
     assert not app.exception
     assert app.session_state["interaction_broker_template"] == "https://trade.vndirect.com.vn/"
-    assert app.session_state["interaction_auto_open"] is True
+    assert app.session_state["interaction_auto_open"] is False
     app.button(key="interaction_watchlist_add").click().run()
     assert LocalWorkspace().list_tickers() == ["FPT"]
     app.text_area(key="interaction_note_FPT").set_value("Theo dõi doanh thu").run()
@@ -26,6 +26,22 @@ def test_sidebar_persists_watchlist_notes_and_preferences(tmp_path, monkeypatch)
     app.button(key="interaction_broker_save").click().run()
     assert LocalWorkspace().get_preferences()["broker_name"] == "VNDIRECT"
     assert not app.exception
+
+
+def test_sidebar_migrates_old_auto_open_default_but_retains_fresh_opt_in(tmp_path, monkeypatch):
+    monkeypatch.setenv('STOCK_AGENT_RUNTIME_DIR', str(tmp_path))
+    app = AppTest.from_string('''
+import streamlit as st
+from stock_multi_agent.ui.local_workspace_panel import render_local_workspace_panel
+st.session_state.setdefault('interaction_auto_open', True)
+render_local_workspace_panel(['FPT'], 'STANDARD')
+''').run()
+    assert not app.exception
+    assert app.session_state['interaction_auto_open'] is False
+    app.checkbox(key='interaction_auto_open').check().run()
+    assert app.session_state['interaction_auto_open'] is True
+    app.run()
+    assert app.session_state['interaction_auto_open'] is True and not app.exception
 
 
 def test_sidebar_queues_analysis_and_chart_without_network(tmp_path, monkeypatch):

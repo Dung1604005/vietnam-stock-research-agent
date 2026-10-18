@@ -20,6 +20,7 @@ from stock_multi_agent.nlu.prompts import EXAMPLE_BANK_VERSION, SEMANTIC_PROMPT_
 from stock_multi_agent.nlu.telemetry import SemanticTelemetryEvent, SemanticTelemetryStore, configured_semantic_telemetry_store
 from stock_multi_agent.providers.llm_provider import SemanticLLMProvider, configured_semantic_provider
 from stock_multi_agent.services.request_telemetry import current_metrics, observed
+from stock_multi_agent.services.screen_filters import parse_screen_filters, is_numeric_screen
 
 
 class HybridSemanticParser:
@@ -60,11 +61,17 @@ class HybridSemanticParser:
                 "llm_attempted": False, "llm_latency_ms": None,
                 "parser_latency_ms": round((time.perf_counter() - started_at) * 1000)})
         extracted = self.entities.extract(raw, normalized)
+        numeric_filters, filter_errors = parse_screen_filters(raw)
+        numeric_screen = is_numeric_screen(raw, numeric_filters, filter_errors, extracted.tickers)
         resolved = self.context.resolve(normalized, extracted.tickers, context)
 
         local = self._fallback(raw, normalized, extracted, resolved, context)
         local = self._enforce_knowledge_contract(local, normalized)
         local = self._extended_intents(local, normalized, context, extracted)
+        if numeric_screen:
+            local = local.model_copy(update={'intent': QueryIntent.STOCK_DISCOVERY, 'tickers': [],
+                'secondary_intents': [], 'confidence': .99, 'needs_clarification': False,
+                'clarification_question': None, 'requested_result_count': extracted.requested_result_count})
         use_llm = self.llm_provider is not None and (self._force_llm or local.confidence < 0.85
             or bool(local.secondary_intents) or local.intent == QueryIntent.UNKNOWN)
         semantic: SemanticQuery | None = None
@@ -90,6 +97,11 @@ class HybridSemanticParser:
         semantic = self._enforce_discovery_contract(semantic)
         semantic = self._enforce_knowledge_contract(semantic, normalized)
         semantic = self._extended_intents(semantic, normalized, context, extracted)
+        if numeric_screen:
+            semantic = semantic.model_copy(update={'intent': QueryIntent.STOCK_DISCOVERY, 'tickers': [],
+                'secondary_intents': [], 'confidence': .99, 'needs_clarification': False,
+                'clarification_question': None, 'requested_result_count': extracted.requested_result_count,
+                'interpretation': f'Sàng lọc theo điều kiện số được nêu rõ; số lượng yêu cầu: {extracted.requested_result_count or "không chỉ định"}.'})
         semantic = self._enforce_required_entity_contract(semantic)
         parsed = semantic.to_parsed_query().model_copy(update={
             "parser_latency_ms": round((time.perf_counter() - started_at) * 1000),
@@ -126,8 +138,14 @@ class HybridSemanticParser:
                 "growth": r"\btang truong\b", "liquidity": r"\bthanh khoan\b"}.items():
             if re.search(pattern, normalized):
                 parsed.comparison_dimensions.append(dimension)
-        for indicator, operator, number in re.findall(r"\b(pe|pb|roe|rsi)\s*(duoi|tren|<|>)\s*(\d+(?:[.,]\d+)?)", normalized):
-            parsed.filters[f"{indicator}_{'lt' if operator in {'duoi', '<'} else 'gt'}"] = float(number.replace(",", "."))
+        parsed.filters.update(numeric_filters)
+        if numeric_screen:
+            count = re.search(r'\b(\d+)\s+(?:ma|co phieu|stocks?)\b|\btop\s+(\d+)\b', normalized)
+            if count and not 1 <= int(count.group(1) or count.group(2)) <= 100:
+                filter_errors.append('Mỗi lượt hỗ trợ yêu cầu từ 1 đến 100 mã cổ phiếu.')
+            if filter_errors:
+                parsed.needs_clarification = True
+                parsed.clarification_question = ' '.join(filter_errors)
         if parsed.intent == QueryIntent.PORTFOLIO_RISK:
             pairs = re.findall(r'\b([A-Z][A-Z0-9]{1,9})\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%', raw)
             parsed.portfolio_weights = {ticker: float(value.replace(',', '.')) / 100 for ticker, value in pairs}

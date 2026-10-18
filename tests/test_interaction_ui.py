@@ -88,6 +88,21 @@ def test_broker_link_disabled_until_manual_confirmation(ui):
     assert 'pending_prompt' not in app.session_state
 
 
+def test_navigation_cancel_is_per_response_and_never_opens_browser(ui):
+    app, _, _ = ui
+    response = AssistantResponse(message='Mở trang FPT', tickers=['FPT'], metadata={
+        'navigation_request': {'kind': 'STOCK'},
+        'browser_actions': {'status': 'CONFIRMATION_REQUIRED', 'request_text': 'Mở trang FPT'}})
+    app.session_state['fixture_response'] = response
+    app.run()
+    assert any(button.label == 'Đồng ý mở trang' for button in app.button)
+    next(button for button in app.button if button.label == 'Không mở').click().run()
+    assert not app.exception
+    assert response.metadata['browser_actions']['status'] == 'CANCELLED'
+    app.run()
+    assert not any(button.label == 'Đồng ý mở trang' for button in app.button)
+
+
 @pytest.mark.parametrize('current_offline', [False, True])
 def test_offline_has_no_outbound_actions_and_does_not_build_links(ui, current_offline):
     app, calls, _ = ui

@@ -6,9 +6,11 @@
 .\.venv\Scripts\python.exe -m streamlit run app\streamlit_app.py --server.address 127.0.0.1
 ```
 
-Mở `http://localhost:8501` hoặc `http://127.0.0.1:8501` trên máy chạy Python. Sidebar → **Tương tác trực tiếp / Theo dõi cá nhân** có **Tự mở trang trên máy này** mặc định bật, tối đa3tab/lượt (đổi1–5 nếu cần).
+Mở `http://localhost:8501` hoặc `http://127.0.0.1:8501` trên máy chạy Python. Sidebar → **Tương tác trực tiếp / Theo dõi cá nhân** có **Tự mở trang trên máy này** mặc định **tắt**, tối đa3tab/lượt (đổi1–5 nếu cần). Session từ bản cũ cũng được chuyển về tắt một lần; bạn phải tự tick lại nếu muốn bật.
 
-Không cần bấm liên kết: sau yêu cầu mới, app gọi trình duyệt mặc định bằng `webbrowser.open`, không dùng JavaScript popup, không cần cài browser/package mới. Nếu OS không mở được, UI báo rõ. Gửi yêu cầu mở tab thành công không bảo đảm website đích đã tải đúng nội dung.
+Khi chưa tick: phân tích, sàng lọc hoặc tìm báo cáo **không tự mở trang**. Với yêu cầu điều hướng như `Mở trang FPT`, app hỏi trước bằng hai nút **Đồng ý mở trang / Không mở**. Xác nhận chỉ áp dụng cho phản hồi đó, không bật tự mở cho các lượt sau.
+
+Nếu bạn chủ động tick ô tự mở, các yêu cầu mới có thể mở trang phù hợp trong giới hạn tab mà không cần bấm từng link. App gọi trình duyệt mặc định bằng `webbrowser.open`, không dùng JavaScript popup, không cần cài browser/package mới. Nếu OS không mở được, UI báo rõ. Gửi yêu cầu mở tab thành công không bảo đảm website đích đã tải đúng nội dung.
 
 Không mở browser trên server cho khách truy cập remote/tên miền public. Lịch sử chat, rerun và đổi widget không mở lại tab. OFFLINE chặn mọi tự mở trang, kể cả phản hồi cũ có nguồn Internet.
 
@@ -16,13 +18,13 @@ Không mở browser trên server cho khách truy cập remote/tên miền public
 
 | Câu nhập | Kết quả |
 | --- | --- |
-| `Mở trang FPT` | Trang DStock đúng mã FPT |
-| `Mở giá TCB` | Trang giá/lịch sử TCB, không hứa realtime |
-| `Mở biểu đồ HPG` | Biểu đồ đúng mã, không cần gọi LLM |
-| `Mở VNDIRECT để mua FPT` | Cổng DBOARD và trang DStock FPT, không điền/gửi lệnh |
-| `Tìm báo cáo mới nhất của FPT` | Research bình thường, rồi tự mở báo cáo thực tế đủ điều kiện |
-| `Mở báo cáo FPT` | URL báo cáo đúng mã đã có trong chat; giữ kỳ/ngày và cảnh báo |
-| `Phân tích FPT` | Phân tích rồi mở trang doanh nghiệp, giá và báo cáo/biểu đồ trong giới hạn tab |
+| `Mở trang FPT` | Hỏi xác nhận, rồi mở trang DStock đúng mã FPT |
+| `Mở giá TCB` | Hỏi xác nhận, rồi mở trang giá/lịch sử TCB, không hứa realtime |
+| `Mở biểu đồ HPG` | Hỏi xác nhận, rồi mở biểu đồ đúng mã, không cần gọi LLM |
+| `Mở VNDIRECT để mua FPT` | Hỏi xác nhận, rồi mở cổng DBOARD và trang DStock FPT, không điền/gửi lệnh |
+| `Tìm báo cáo mới nhất của FPT` | Research bình thường; không tự mở nếu chưa tick cho phép |
+| `Mở báo cáo FPT` | Hỏi xác nhận URL báo cáo đúng mã đã có trong chat; giữ kỳ/ngày và cảnh báo |
+| `Phân tích FPT` | Chỉ phân tích; không tự mở nếu chưa tick cho phép |
 
 Điều hướng trang/giá/biểu đồ không gọi LLM/API dữ liệu. Báo cáo mới nhất vẫn phải qua tìm kiếm/kiểm độ mới; không thay bằng tài liệu cũ hoặc đoán URL. Không tự mở broker chỉ vì kết luận MUA hoặc câu hỏi “Tôi nên mua mã nào”. Chỉ mở cổng khi có yêu cầu điều hướng; nhiều mã để mua sẽ hỏi lại thay vì chọn ngẫu nhiên.
 
@@ -47,7 +49,7 @@ Chỉ HTTPS công khai; chặn localhost/IP nội bộ, token/credentials, schem
 
 - Watchlist và ghi chú riêng theo mã lưu local; bỏ theo dõi không xóa ghi chú.
 - Gửi nhanh phân tích, biểu đồ, tìm báo cáo mới nhất; so sánh2–5mã trong watchlist.
-- Dưới phản hồi có chọn mã, tài liệu phân trang, provenance và link mở lại dự phòng; không bắt buộc bấm để tự mở hoạt động.
+- Dưới phản hồi có chọn mã, tài liệu phân trang, provenance và link mở thủ công. Việc xác nhận/tick tự mở là tùy chọn, không bắt buộc để phân tích hoạt động.
 - Audit mở trang: `response.metadata.browser_actions`, không thay kết luận đầu tư.
 
 File riêng: `.runtime/interaction/workspace.json` (hoặc dưới `STOCK_AGENT_RUNTIME_DIR`), được Git ignore, không gửi LLM mặc định. Không chia sẻ app ra Internet nếu có ghi chú riêng. Xem [workspace](local-workspace.md).

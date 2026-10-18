@@ -20,6 +20,11 @@ def _queue(prompt: str) -> None:
 def render_local_workspace_panel(active_tickers: list[str], execution_mode: str) -> None:
     """Render inside sidebar, after the existing execution-mode/replay widgets."""
     offline = execution_mode == "OFFLINE"
+    # Migrate sessions created when automatic browsing was enabled by default.
+    # A fresh explicit checkbox choice is required under the consent policy.
+    if st.session_state.get('interaction_consent_version') != 'opt-in-v2':
+        st.session_state['interaction_auto_open'] = False
+        st.session_state['interaction_consent_version'] = 'opt-in-v2'
     st.session_state.interaction_execution_mode = execution_mode
     workspace = LocalWorkspace()
     try:
@@ -40,8 +45,8 @@ def render_local_workspace_panel(active_tickers: list[str], execution_mode: str)
     st.session_state.interaction_broker_name = broker_name
     st.session_state.interaction_broker_template = broker_template
     with st.expander("Tương tác trực tiếp / Theo dõi cá nhân", expanded=False):
-        st.checkbox("Tự mở trang trên máy này", value=True, key="interaction_auto_open", disabled=offline,
-                    help="Mở trình duyệt trên máy chạy localhost; không đăng nhập hoặc đặt lệnh thay bạn.")
+        st.checkbox("Tự mở trang trên máy này", value=False, key="interaction_auto_open", disabled=offline,
+                    help="Chỉ bật khi bạn đồng ý cho yêu cầu mới tự mở tab. Nếu không bật, yêu cầu mở trang cần xác nhận riêng. Không đăng nhập hoặc đặt lệnh thay bạn.")
         st.slider("Số tab tự mở tối đa", min_value=1, max_value=5, value=3,
                   key="interaction_max_tabs", disabled=offline)
         st.caption("Tự mở trang đang bật." if st.session_state.interaction_auto_open and not offline else

@@ -76,6 +76,7 @@ class ScreenCandidate(BaseModel):
     as_of: date | None = None
     source_ids: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
+    filter_values: dict[str, float | None] = Field(default_factory=dict)
     rank: int | None = Field(default=None, ge=1)
 
 

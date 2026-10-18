@@ -18,6 +18,7 @@ from stock_multi_agent.providers.market_provider import MarketDataError
 from stock_multi_agent.providers.resilience import is_rate_limit_error
 from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.universe_service import UniverseService
+from stock_multi_agent.services.screen_filters import validate_filter_keys, matches_filter
 
 
 @dataclass
@@ -58,6 +59,7 @@ class ScreeningService:
         self._screen_cache = OrderedDict()
 
     def run(self, spec: ScreenSpec, horizon: str) -> ScreenRun:
+        validate_filter_keys(spec.filters)
         universe = self.universes.select(spec.universe_key)
         if spec.as_of is not None:
             raise ValueError("Historical as-of screening is unavailable until a point-in-time universe/data source is attached.")
@@ -93,7 +95,7 @@ class ScreeningService:
                     reasons.append(f"Signal {technical.signal.value} and score {technical.score:.1f} meet screen policy.")
                 if data.quality_report.status.value == "WARN":
                     reasons.append("Data-quality warnings are attached; this is not a recommendation.")
-                result.candidates.append(ScreenCandidate(
+                candidate = ScreenCandidate(
                     ticker=ticker,
                     status=status,
                     technical_signal=technical.signal,
@@ -101,7 +103,9 @@ class ScreeningService:
                     as_of=data.as_of,
                     source_ids=[source.source_id for source in data.source_refs],
                     reasons=reasons,
-                ))
+                )
+                self._apply_rsi_filters(candidate, data, spec)
+                result.candidates.append(candidate)
                 result.traces.extend(state.trace)
                 result.source_details.extend(data.source_refs)
                 if data.as_of and (result.newest_as_of is None or data.as_of > result.newest_as_of):
@@ -193,6 +197,7 @@ class ScreeningService:
                             f"Refreshed data: signal {technical.signal.value} and score "
                             f"{technical.score:.1f} meet screen policy."
                         )
+                    self._apply_rsi_filters(item, data, spec)
                     result.traces.extend(refreshed.trace)
                     result.source_details.extend(data.source_refs)
                     if result.newest_fetched_at is None or data.fetched_at > result.newest_fetched_at:
@@ -276,6 +281,26 @@ class ScreeningService:
         result.completed_at = datetime.now().astimezone()
         return result
 
+    @staticmethod
+    def _apply_rsi_filters(candidate, data, spec):
+        constraints = {field: value for field, value in spec.filters.items() if field.startswith('rsi_')}
+        if not constraints or candidate.status is not ScreenStatus.PASS:
+            return
+        from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolkit
+        try:
+            value = TechnicalIndicatorToolkit().rsi([bar.close for bar in data.bars], 14)
+            candidate.filter_values['rsi'] = value
+            for field, threshold in constraints.items():
+                op = field.rsplit('_', 1)[1]
+                if not matches_filter(value, op, threshold):
+                    candidate.status = ScreenStatus.FAIL
+                    candidate.reasons.append(f'RSI14={value:.6g} does not meet {field}={threshold}.')
+                else:
+                    candidate.reasons.append(f'RSI14={value:.6g} meets {field}={threshold}.')
+        except ValueError:
+            candidate.status = ScreenStatus.UNAVAILABLE
+            candidate.reasons.append('RSI14 unavailable: at least 15 finite closing prices are required.')
+
     def run_progressive(self, spec: ScreenSpec, horizon: str, target_count: int) -> ScreenRun:
         """Rank once, then halve the eligible pool until the requested top-K remains.
 
@@ -286,9 +311,7 @@ class ScreeningService:
         """
         if not 1 <= target_count <= spec.maximum_candidates:
             raise ValueError("target_count must be within the bounded screening universe")
-        allowed_filters = {f'{field}_{op}' for field in ('pe', 'pb', 'roe', 'rsi') for op in ('lt', 'gt')}
-        if set(spec.filters).difference(allowed_filters):
-            raise ValueError('Unsupported screen filter; allowed fields: PE, PB, ROE, RSI with < or >')
+        validate_filter_keys(spec.filters)
         key = (spec.model_dump_json(), horizon, str(self.today_provider()), tuple(self.universes.select(spec.universe_key).tickers))
         cached = self._screen_cache.get(key)
         if cached and monotonic() - cached[0] < 120:
@@ -301,28 +324,29 @@ class ScreeningService:
                 self._screen_cache[key] = (monotonic(), deepcopy(result))
                 while len(self._screen_cache) > 8:
                     self._screen_cache.popitem(last=False)
-        if spec.filters or spec.exchange:
+        enrichment_filters = {field: value for field, value in spec.filters.items() if not field.startswith('rsi_')}
+        if enrichment_filters or spec.exchange:
             # Enrich only a ranked shortlist, not all 100 symbols. Explicitly
             # disclose which survivors were not evaluated under custom filters.
             candidates = [item for item in result.candidates if item.status is ScreenStatus.PASS]
             limit = min(100, max(20, target_count * 3))
-            from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolkit
             for index, item in enumerate(candidates):
                 if index >= limit:
                     item.status = ScreenStatus.UNAVAILABLE
                     item.reasons.append('Custom-filter enrichment budget exhausted before this ranked candidate.')
                     continue
                 try:
-                    data = self.analysis.fetch_data(item.ticker, horizon, include_financials=any(not field.startswith('rsi_') for field in spec.filters), include_forecast=False).market_data
+                    data = self.analysis.fetch_data(item.ticker, horizon, include_financials=bool(enrichment_filters), include_forecast=False).market_data
                     if data is None or data.as_of != item.as_of:
                         raise ValueError('Filter data and technical snapshot are not aligned')
                     if spec.exchange and (not data.instrument or data.instrument.exchange != spec.exchange):
                         raise ValueError('Exchange missing or does not match requested exchange')
-                    for field, threshold in spec.filters.items():
+                    for field, threshold in enrichment_filters.items():
                         metric, operator = field.rsplit('_', 1)
-                        value = TechnicalIndicatorToolkit().rsi([bar.close for bar in data.bars], 14) if metric == 'rsi' else getattr(data.financials, metric)
+                        value = getattr(data.financials, metric, None)
+                        item.filter_values[metric] = value
                         boundary = threshold / 100 if metric == 'roe' else threshold
-                        if value is None or not (value < boundary if operator == 'lt' else value > boundary):
+                        if not matches_filter(value, operator, boundary):
                             item.status = ScreenStatus.FAIL
                             item.reasons.append(f'Filter {field}={threshold} failed or metric unavailable.')
                     result.source_details.extend(data.source_refs)

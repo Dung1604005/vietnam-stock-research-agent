@@ -21,15 +21,15 @@ def test_remote_or_malformed_hosts_do_not_launch(host):
     assert result['status'] == 'NOT_LOCALHOST' and not opened
 
 
-def test_single_ticker_default_opens_three_categories_once():
+def test_single_ticker_opt_in_opens_three_categories_once():
     response = AssistantResponse(message='FPT', tickers=['FPT'])
     state, opened = {}, []
-    result = open_response_actions(response, 'Phân tích FPT', state=state, host='localhost:8501',
+    result = open_response_actions(response, 'Phân tích FPT', state=state, host='localhost:8501', enabled=True,
         opener=lambda url: opened.append(url) or True)
     assert result['status'] == 'OPENED' and len(opened) == 3
     assert opened[0] == 'https://dstock.vndirect.com.vn/suc-khoe-co-phieu/FPT'
     assert {x['kind'] for x in result['opened']} == {'STOCK', 'QUOTE', 'CHART'}
-    duplicate = open_response_actions(response, 'Phân tích FPT', state=state, host='localhost:8501',
+    duplicate = open_response_actions(response, 'Phân tích FPT', state=state, host='localhost:8501', enabled=True,
         opener=lambda url: opened.append(url) or True)
     assert duplicate['status'] == 'ALREADY_HANDLED' and len(opened) == 3
 
@@ -38,7 +38,7 @@ def test_explicit_broker_request_opens_portal_and_dstock_no_trade_params():
     response = AssistantResponse(message='navigation', tickers=['TCB'],
         metadata={'navigation_request': {'kind': 'BROKER'}})
     opened = []
-    result = open_response_actions(response, 'Mở VNDIRECT để mua TCB', state={}, host='127.0.0.1:8501',
+    result = open_response_actions(response, 'Mở VNDIRECT để mua TCB', state={}, host='127.0.0.1:8501', confirmed=True,
         opener=lambda url: opened.append(url) or True)
     assert opened == ['https://trade.vndirect.com.vn/', 'https://dstock.vndirect.com.vn/suc-khoe-co-phieu/TCB']
     assert result['opened'][0]['ticker'] is None  # Do not claim preselected order ticker.
@@ -56,7 +56,7 @@ def test_verified_report_opens_exact_pdf_including_encoded_spaces():
     response = AssistantResponse(message='Research', tickers=['FPT'], metadata={'research_citations': [
         {'tickers': ['FPT'], 'source_url': url, 'title': 'Annual report', 'document_type': 'annual_report'}]})
     opened = []
-    result = open_response_actions(response, 'Mở báo cáo FPT', state={}, host='localhost',
+    result = open_response_actions(response, 'Mở báo cáo FPT', state={}, host='localhost', confirmed=True,
         opener=lambda target: opened.append(target) or True)
     assert opened == [url] and result['status'] == 'OPENED'
 
@@ -65,7 +65,7 @@ def test_unknown_report_domain_is_not_auto_opened():
     response = AssistantResponse(message='Research', tickers=['FPT'], metadata={'research_citations': [
         {'tickers': ['FPT'], 'source_url': 'https://untrusted-report.example/annual.pdf', 'title': 'Unknown', 'document_type': 'annual_report'}]})
     opened = []
-    result = open_response_actions(response, 'Mở báo cáo FPT', state={}, host='localhost',
+    result = open_response_actions(response, 'Mở báo cáo FPT', state={}, host='localhost', confirmed=True,
         opener=lambda target: opened.append(target) or True)
     assert not opened and result['status'] == 'NO_SAFE_ACTIONS'
     assert result['skipped'][0]['reason'] == 'UNTRUSTED_AUTOMATIC_DESTINATION'
@@ -86,11 +86,11 @@ def test_offline_and_disabled_never_open(mode, metadata, enabled, status):
 def test_list_tab_limit_and_failed_browser_no_automatic_retry():
     response = AssistantResponse(message='list', tickers=['FPT', 'TCB', 'VNM', 'HPG', 'VCB'])
     state, attempts = {}, []
-    result = open_response_actions(response, 'Mã đáng chú ý', state=state, host='localhost', max_tabs=2,
+    result = open_response_actions(response, 'Mã đáng chú ý', state=state, host='localhost', max_tabs=2, enabled=True,
         opener=lambda target: attempts.append(target) or False)
     assert len(attempts) == 2 and result['status'] == 'BROWSER_UNAVAILABLE'
     assert result['remaining_count'] > 0
-    result = open_response_actions(response, 'Mã đáng chú ý', state=state, host='localhost',
+    result = open_response_actions(response, 'Mã đáng chú ý', state=state, host='localhost', enabled=True,
         opener=lambda target: attempts.append(target) or True)
     assert result['status'] == 'ALREADY_HANDLED' and len(attempts) == 2
 
@@ -99,7 +99,7 @@ def test_new_response_can_open_same_ticker_again():
     state, opened = {}, []
     for _ in range(2):
         response = AssistantResponse(message='navigation', tickers=['FPT'], metadata={'navigation_request': {'kind': 'STOCK'}})
-        open_response_actions(response, 'Mở trang FPT', state=state, host='localhost',
+        open_response_actions(response, 'Mở trang FPT', state=state, host='localhost', confirmed=True,
             opener=lambda target: opened.append(target) or True)
     assert len(opened) == 2
 
@@ -129,8 +129,31 @@ def test_full_app_navigation_does_not_call_provider_and_does_not_repeat_on_rerun
     assert not app.exception
     app.chat_input[0].set_value('Mở trang FPT').run()
     assert not app.exception
-    assert opened == ['https://dstock.vndirect.com.vn/suc-khoe-co-phieu/FPT']
+    assert opened == []
     responses = [m.response for c in app.session_state['conversations'].values() for m in c.messages if m.response]
-    assert len(responses) == 1 and responses[0].metadata['browser_actions']['status'] == 'OPENED'
+    assert len(responses) == 1 and responses[0].metadata['browser_actions']['status'] == 'CONFIRMATION_REQUIRED'
+    approve = next(button for button in app.button if button.label == 'Đồng ý mở trang')
+    approve.click().run()
+    assert not app.exception
+    assert responses[0].metadata['browser_actions']['status'] == 'OPENED'
     app.run()
     assert not app.exception and len(opened) == 1
+
+
+def test_default_analysis_never_opens_or_asks_for_navigation():
+    opened = []
+    result = open_response_actions(AssistantResponse(message='analysis', tickers=['FPT']), 'Phân tích FPT',
+        state={}, host='localhost', opener=lambda url: opened.append(url) or True)
+    assert result['status'] == 'DISABLED' and not opened
+
+
+def test_explicit_navigation_requires_confirmation_without_opt_in():
+    opened = []
+    response = AssistantResponse(message='navigation', tickers=['FPT'], metadata={'navigation_request': {'kind': 'STOCK'}})
+    state = {}
+    pending = open_response_actions(response, 'Mở trang FPT', state=state, host='localhost',
+        opener=lambda url: opened.append(url) or True)
+    assert pending['status'] == 'CONFIRMATION_REQUIRED' and not opened
+    approved = open_response_actions(response, 'Mở trang FPT', state=state, host='localhost', confirmed=True,
+        opener=lambda url: opened.append(url) or True)
+    assert approved['status'] == 'OPENED' and len(opened) == 1

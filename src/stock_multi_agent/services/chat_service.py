@@ -1021,6 +1021,11 @@ class ChatService:
         eligible_signals = [Signal.BUY, Signal.HOLD]
         minimum_score = 4.0
         ranking_direction = RankingDirection.HIGHER_SCORE_FIRST
+        if filters and not actions:
+            # A neutral numeric screen is not a BUY/HOLD recommendation. Do not
+            # silently remove SELL/UNKNOWN signals that satisfy the user's rule.
+            eligible_signals = list(Signal)
+            minimum_score = 0.0
         if actions == [Signal.BUY.value]:
             eligible_signals = [Signal.BUY]
         elif actions == [Signal.SELL.value]:
@@ -1056,8 +1061,16 @@ class ChatService:
             }
             for candidate in selected_candidates
         ]
+        metric_labels = {'rsi': 'RSI14', 'pe': 'P/E', 'pb': 'P/B', 'roe': 'ROE (%)'}
+        metric_columns = []
+        for metric in sorted({field.rsplit('_', 1)[0] for field in spec.filters}):
+            label = metric_labels[metric]
+            metric_columns.append(label)
+            for row, candidate in zip(rows, selected_candidates):
+                value = candidate.filter_values.get(metric)
+                row[label] = value * 100 if metric == 'roe' and value is not None else value
         returned_count = len(selected_candidates)
-        action_label = actions[0] if len(actions) == 1 else "BUY/HOLD"
+        action_label = actions[0] if len(actions) == 1 else ('điều kiện người dùng' if filters else 'BUY/HOLD')
         warnings = list(dict.fromkeys(run.warnings))
         if requested_count is not None and returned_count < requested_count:
             warnings.append(
@@ -1066,7 +1079,7 @@ class ChatService:
             )
         table = ResponseTable(
             title=f"Screen results - {universe.key}",
-            columns=["Ticker", "Rank", "Status", "Technical", "Score", "As of", "Reason"],
+            columns=["Ticker", "Rank", *metric_columns, "Status", "Technical", "Score", "As of", "Reason"],
             rows=rows,
             note=(
                 f"Universe: {len(universe.tickers)} symbols; evaluated: {len(run.candidates)}; "
@@ -1077,10 +1090,17 @@ class ChatService:
                 "not a market-wide universe or investment recommendation. không đại diện toàn thị trường."
             ),
         )
+        filter_note = ''
+        if filters:
+            operators = {'lt': '<', 'gt': '>', 'lte': '≤', 'gte': '≥', 'eq': '='}
+            conditions = [f'{metric_labels[field.rsplit("_", 1)[0]]} {operators[field.rsplit("_", 1)[1]]} {threshold:g}' for field, threshold in filters.items()]
+            filter_note = '\n\n**Điều kiện lọc:** ' + ' và '.join(conditions) + '.'
+            if any(field.startswith('rsi_') for field in filters):
+                filter_note += ' RSI14 được Python tính từ 14 biến động giá đóng cửa gần nhất; so sánh ngưỡng trước khi làm tròn. Đạt bộ lọc không đồng nghĩa là mã nên mua.'
         return AssistantResponse(
             message=self._screen_message(
                 universe.key, len(run.candidates), requested_count, returned_count, action_label,
-            ),
+            ) + filter_note,
             response_type=ResponseType.STOCK_LIST,
             tickers=[candidate.ticker for candidate in selected_candidates if candidate.status is ScreenStatus.PASS],
             tables=[table], agent_trace=run.traces,

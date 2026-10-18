@@ -81,7 +81,7 @@ def _safe_for_automatic_open(action, registry, broker_template):
 
 
 def open_response_actions(response: AssistantResponse, request_text: str, *, state: MutableMapping,
-                          host: str | None, execution_mode='STANDARD', enabled=True, max_tabs=3,
+                          host: str | None, execution_mode='STANDARD', enabled=False, confirmed=False, max_tabs=3,
                           broker_url_template='https://trade.vndirect.com.vn/', broker_name='VNDIRECT',
                           opener=None, registry=None) -> dict:
     """At-most-once bounded launch for a completed NEW request, never on rerun.
@@ -92,12 +92,17 @@ def open_response_actions(response: AssistantResponse, request_text: str, *, sta
     mode = response.metadata.get('execution_profile', {})
     if not isinstance(mode, dict):
         mode = {}
-    if not enabled:
-        return {'status': 'DISABLED', 'opened': [], 'skipped': []}
     if execution_mode == 'OFFLINE' or mode.get('mode') == 'OFFLINE' or mode.get('external_allowed') is False:
         return {'status': 'OFFLINE_BLOCKED', 'opened': [], 'skipped': []}
     if not is_local_browser_host(host):
         return {'status': 'NOT_LOCALHOST', 'opened': [], 'skipped': []}
+    if not enabled and not confirmed:
+        explicit = bool(response.metadata.get('navigation_request')) or bool(re.search(
+            r'\b(?:mo|open)\b.*\b(?:trang|web|website|bao cao|gia|bieu do|chart|vndirect|dstock|dboard)\b', _plain(request_text)))
+        if explicit:
+            return {'status': 'CONFIRMATION_REQUIRED', 'opened': [], 'skipped': [],
+                    'request_text': request_text[:1000]}
+        return {'status': 'DISABLED', 'opened': [], 'skipped': []}
     identifier = response.metadata.setdefault('browser_action_id', uuid4().hex)
     ledger = dict(state.get('interaction_browser_ledger', {}))
     if identifier in ledger:
