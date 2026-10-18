@@ -22,7 +22,7 @@ jobs:
       TORCH_HOME: ${{ github.workspace }}/.cache/torch
       STOCK_AGENT_RUNTIME_DIR: ${{ github.workspace }}/.runtime/ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
