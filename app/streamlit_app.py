@@ -17,6 +17,7 @@ from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.price_forecast import PriceForecastService
 from stock_multi_agent.ui.components import render_assistant_message, render_user_message
 from stock_multi_agent.ui.styles import APP_CSS
+from stock_multi_agent.ui.agent_workspace import AGENTS, render_workspace
 from stock_multi_agent.services.execution_profiles import execution_scope
 from stock_multi_agent.services.progress_events import ProgressSink
 from stock_multi_agent.ui.local_workspace_panel import render_local_workspace_panel
@@ -25,7 +26,7 @@ from stock_multi_agent.services.navigation_request import navigation_response
 from stock_multi_agent.models.chat import ConversationMessage
 
 
-st.set_page_config(page_title="Stock Multi-Agent Assistant", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Agent Studio · Stock Research", page_icon="✦", layout="wide")
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
 SUGGESTIONS = [
@@ -47,6 +48,7 @@ from stock_multi_agent.services.runtime_identity import SERVICE_RUNTIME_PROFILE
 
 
 with st.sidebar:
+    st.markdown('<div class="studio-brand"><b>✦</b><div>agent studio<small>STOCK RESEARCH TEAM</small></div></div>', unsafe_allow_html=True)
     selected_lstm = st.radio('Mô hình dự báo LSTM', ['v2', 'v4'], horizontal=True,
         format_func=lambda value: 'V2' if value == 'v2' else 'V4 · thử nghiệm',
         key='selected_lstm_version',
@@ -88,7 +90,7 @@ current_id = st.session_state.current_conversation_id
 conversation = store.get(current_id)
 
 with st.sidebar:
-    st.markdown('<div class="app-kicker">🤖 Stock Multi-Agent</div>', unsafe_allow_html=True)
+    st.caption('KHÔNG GIAN CỦA BẠN')
     st.button("＋ New chat", use_container_width=True, on_click=new_chat, args=(store,))
     st.caption("CONVERSATIONS")
     for item in store.list():
@@ -125,12 +127,21 @@ if library_open:
         render_research_library(service.research)
     st.stop()
 
-st.markdown('<div class="app-kicker">Stock Multi-Agent Assistant</div>', unsafe_allow_html=True)
+st.markdown('<div class="studio-page-head"><div><h1>Không gian nghiên cứu</h1>'
+    '<p>Bạn đặt câu hỏi. Đội ngũ AI cùng tìm góc nhìn.</p></div>'
+    '<span class="studio-page-badge">✦ &nbsp; 6 chuyên gia · 1 đội ngũ</span></div>', unsafe_allow_html=True)
+studio_focus = st.segmented_control('Gặp đội ngũ của bạn', options=[agent.role for agent in AGENTS],
+    default='manager', format_func=lambda role: next(f'{agent.symbol} {agent.name}' for agent in AGENTS if agent.role == role),
+    key='studio_agent_focus') or 'manager'
+workspace_view = st.empty()
+latest_response = next((message.response for message in reversed(conversation.messages) if message.response), None)
+render_workspace(latest_response.metadata.get('progress_events', []) if latest_response else [],
+    tickers=conversation.active_tickers, mode=execution_mode, selected=studio_focus, target=workspace_view)
 
 if not conversation.messages:
     st.markdown(
-        '<div class="empty-state"><h1>Hôm nay bạn muốn phân tích gì?</h1>'
-        '<p>Trò chuyện tự nhiên với hệ thống 5 Agent chuyên biệt.</p></div>',
+        '<div class="empty-state"><h1>Bắt đầu một ý tưởng nghiên cứu</h1>'
+        '<p>Chọn gợi ý bên dưới hoặc giao nhiệm vụ cho đội ngũ của bạn.</p></div>',
         unsafe_allow_html=True,
     )
     suggestion_columns = st.columns(2)
@@ -148,13 +159,15 @@ for message in conversation.messages:
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(message.content)
 
-prompt = st.chat_input("Message Stock Agent…")
+prompt = st.chat_input("Giao nhiệm vụ cho đội ngũ… ví dụ: Phân tích FPT")
 if st.session_state.get("pending_prompt"):
     prompt = st.session_state.pop("pending_prompt")
 
 if prompt:
     render_user_message(prompt)
     sink = ProgressSink()
+    render_workspace([], tickers=conversation.active_tickers, mode=execution_mode,
+        selected=studio_focus, target=workspace_view)
     def handle_request():
         # Opening a known page is a navigation task, not financial analysis:
         # no LLM or provider round trip is needed for these explicit requests.
@@ -174,9 +187,13 @@ if prompt:
         live_progress = st.empty()
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix='stock-request') as executor:
             future = executor.submit(copy_context().run, handle_request)
+            last_event_count = 0
             while not future.done():
                 events = sink.snapshot()
-                if events:
+                if events and len(events) != last_event_count:
+                    last_event_count = len(events)
+                    render_workspace(events, tickers=conversation.active_tickers, mode=execution_mode,
+                        selected=studio_focus, running=True, target=workspace_view)
                     latest = {}
                     for event in events:
                         latest[event['node']] = event
@@ -186,6 +203,8 @@ if prompt:
             try:
                 response = future.result()
             except Exception as exc:
+                render_workspace(sink.snapshot(), tickers=conversation.active_tickers, mode=execution_mode,
+                    selected=studio_focus, target=workspace_view)
                 st.error(f'Không hoàn thành request ({type(exc).__name__}). Không tự thay dữ liệu giả.')
                 status.update(label='Request không hoàn thành', state='error')
                 st.stop()
