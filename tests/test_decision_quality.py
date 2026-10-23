@@ -69,6 +69,17 @@ def test_same_scope_metric_conflict_blocks_buy_even_with_complete_evidence(suppo
     assert conflict.detail in update["agent_reports"][0].missing_information
 
 
+def test_historical_fundamental_is_explained_and_not_treated_as_current_buy(supported_state):
+    result = supported_state.fundamental_result
+    result.data_mode = 'LATEST_AVAILABLE'
+    result.metric_periods = {'roe': date(2018, 12, 31)}
+    result.fallback_metrics = ['roe']
+    final = _manager().finalize(supported_state)['final_decision']
+    assert final.recommendation is Recommendation.WATCH
+    assert any('roe=2018-12-31' in detail for detail in final.conflicts)
+    assert 'kỳ gần nhất' in final.final_reasoning
+
+
 @pytest.mark.parametrize("changes", [
     {"consolidation": "SEPARATE"},
     {"reporting_basis": "YTD"},

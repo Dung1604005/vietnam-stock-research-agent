@@ -11,6 +11,7 @@ from stock_multi_agent.models.data import DataKind
 from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.tools.technical_indicators import TechnicalIndicatorToolkit
+from stock_multi_agent.services.financial_freshness import scoring_financials
 
 
 class RiskAgent(BaseAgent):
@@ -100,7 +101,9 @@ class RiskAgent(BaseAgent):
             # score duplicated stale/missing-data penalties and made HIGH nearly automatic.
             warnings.append(f"Data-quality warnings affect confidence ({len(quality_issues)} issue(s)).")
             uncertainty_score += min(3.0, 0.75 * len(quality_issues))
-        debt_to_equity = state.market_data.financials.debt_to_equity
+        eligible_financials, financial_limits = scoring_financials(state.market_data)
+        debt_to_equity = eligible_financials.debt_to_equity
+        warnings.extend(financial_limits)
         sector = state.market_data.instrument.sector if state.market_data.instrument else None
         financial_sector = self._is_financial_sector(sector)
         sector_template = self._sector_template(sector)
@@ -356,7 +359,7 @@ class RiskAgent(BaseAgent):
             "NON_FINANCIAL_GENERIC": "Debt, operating cash flow, margins and growth are limited checks; audit opinion, customers and contingent liabilities require reports.",
             "UNKNOWN": "Sector is unverified; industry-specific prudential conclusions are withheld.",
         }
-        metrics = state.market_data.financials.model_dump()
+        metrics = scoring_financials(state.market_data)[0].model_dump()
         observations = [f"Sector template: {template}", hints[template]]
         evidence = []
         available = set()

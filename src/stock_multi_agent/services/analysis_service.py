@@ -36,7 +36,7 @@ class AnalysisService:
             from stock_multi_agent.services.research_orchestrator import ResearchOrchestrator
             from stock_multi_agent.services.research_planner import ResearchPlanner
             planner = ResearchPlanner()
-            planner.max_searches, planner.max_pages, planner.timeout_seconds = 1, 2, 8
+            planner.max_searches, planner.max_pages, planner.timeout_seconds = 3, 4, 20
             research_web = ResearchOrchestrator(planner=planner)
         self.research_agent = ResearchAgent(research_store, web_research=research_web, llm_advisor=advisor)
         self.technical_agent = TechnicalAgent(technical_tools, llm_advisor=advisor)

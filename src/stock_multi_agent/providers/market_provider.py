@@ -50,7 +50,7 @@ class MarketDataProvider(Protocol):
 class VnstockMarketDataProvider:
     """Real Vietnamese market data via vnstock 4.x's unified stock API."""
 
-    SCHEMA_VERSION = "vnstock-4-normalized-v7-financial-history"
+    SCHEMA_VERSION = "vnstock-4-normalized-v8-latest-financial-periods"
 
     def __init__(
         self,
@@ -223,7 +223,8 @@ class VnstockMarketDataProvider:
             finance: Any | None = None
             try:
                 check_deadline()
-                ratio_parameters = {"symbol": symbol, "period": "year", "lang": "en", "dropna": True}
+                ratio_parameters = {"symbol": symbol, "period": "quarter", "lang": "en", "dropna": False,
+                                    "history_limit": 512}
                 finance = Finance(
                     source=self.source,
                     symbol=symbol,
@@ -232,7 +233,7 @@ class VnstockMarketDataProvider:
                     show_log=False,
                 )
                 ratio_frame = self.executor.run(
-                    lambda: self._call_upstream(finance.ratio, period="year", lang="en", dropna=True, show_log=False)
+                    lambda: self._financial_report_frame(finance, 'ratio', 'quarter')
                 )
                 financial_source_id = f"{self.source}:Finance.ratio:{symbol}"
                 financials, observations = self._normalize_ratios_with_observations(ratio_frame, financial_source_id)
@@ -261,7 +262,9 @@ class VnstockMarketDataProvider:
             except Exception as exc:
                 warnings.append(f"Không tải được đầy đủ chỉ số tài chính: {exc}")
 
-            if finance is not None and self._feature_enabled("STOCK_AGENT_FINANCIAL_STATEMENTS_ENABLED", "false"):
+            latest_ratio = max((o.period_end for o in observations if o.period_end), default=None)
+            needs_new_statements = latest_ratio is None or (bars[-1].date - latest_ratio).days > 550
+            if finance is not None and (self._feature_enabled("STOCK_AGENT_FINANCIAL_STATEMENTS_ENABLED", "false") or needs_new_statements):
                 try:
                     statement_observations, statement_refs = self._fetch_statement_series(finance, symbol, fetched_at)
                     source_refs.extend(statement_refs)
@@ -587,10 +590,11 @@ class VnstockMarketDataProvider:
             frequencies.append("quarter")
         for frequency in frequencies:
             for statement, kind, method in specifications:
-                parameters = {"symbol": ticker, "period": frequency, "lang": "en", "dropna": True}
+                parameters = {"symbol": ticker, "period": frequency, "lang": "en", "dropna": False,
+                              "history_limit": 512}
                 try:
                     frame = self.executor.run(
-                        lambda method=method, frequency=frequency: self._call_upstream(method, period=frequency, lang="en", dropna=True, show_log=False)
+                        lambda statement=statement, frequency=frequency: self._financial_report_frame(finance, statement, frequency)
                     )
                 except BudgetExceeded:
                     raise
@@ -614,6 +618,28 @@ class VnstockMarketDataProvider:
                 ))
                 all_observations.extend(observations)
         return all_observations, refs
+
+    def _financial_report_frame(self, finance: Any, report: str, period: str):
+        """Avoid VCI's head(4) and annual labels applied to quarterly ratios.
+
+        The installed vnstock VCI explorer exposes a bounded history reader;
+        public ratio() discards that history before our normalizer can sort it.
+        Keep this compatibility path guarded for other versions/providers.
+        """
+        explorer = getattr(finance, 'provider', None)
+        reader = getattr(explorer, '_get_report', None)
+        if self.source == 'VCI' and callable(reader) and {
+            'report_type', 'mode', 'period', 'limit'
+        }.issubset(inspect.signature(reader).parameters):
+            frame = self._call_upstream(reader, report_type=report, period=period,
+                lang='en', mode='raw' if report == 'ratio' else 'final', limit=512, show_log=False)
+            if report == 'ratio' and isinstance(frame, pd.DataFrame):
+                # Keep year/quarter columns and numerical values exactly as
+                # returned. A display label '(%)' is not a scale declaration.
+                frame = frame.rename(columns={'pe': 'pe_ratio', 'pb': 'pb_ratio'})
+            return frame
+        return self._call_upstream(getattr(finance, report), period=period,
+            lang='en', dropna=False, show_log=False)
 
     @classmethod
     def _normalize_statement_observations(
@@ -764,14 +790,14 @@ class VnstockMarketDataProvider:
         definitions = {
             "revenue_growth": (("revenuegrowth", "salesgrowth"), "ratio", True),
             "profit_growth": (("netprofitgrowth", "earningsgrowth"), "ratio", True),
-            "eps": (("eps",), "currency_per_share", False),
+            "eps": (("eps", "earningspershare", "earningpershare"), "currency_per_share", False),
             "pe": (("pe_ratio", "price earning"), "multiple", False),
             "pb": (("pb_ratio", "price to book"), "multiple", False),
             "roe": (("roe",), "ratio", True),
             "roa": (("roa",), "ratio", True),
             "debt_to_equity": (("debtequity", "debttoequity"), "ratio", False),
             "operating_cash_flow": (("operatingcashflow", "cashflowfromoperating"), "currency", False),
-            "profit_margin": (("netprofitmargin", "profitmargin"), "ratio", True),
+            "profit_margin": (("netprofitmargin", "profitmargin", "netmargin"), "ratio", True),
         }
         normalized: dict[str, float | None] = {}
         observations: list[FinancialMetricObservation] = []

@@ -24,6 +24,7 @@ _ALLOWED_METADATA = {
     'decision_policy_version', 'decision_calibration_status', 'technical_signal',
     'technical_policy_version', 'technical_feature_contributions', 'technical_diagnostics',
     'fundamental_signal', 'fundamental_policy_version', 'fundamental_feature_contributions',
+    'fundamental_data_mode', 'fundamental_metric_periods', 'fundamental_fallback_metrics', 'fundamental_confidence',
     'risk_level', 'risk_policy_version', 'risk_feature_contributions', 'issuer_risk_score',
     'issuer_risk_level', 'data_uncertainty_level', 'evidence_completeness', 'conflicts',
     'agent_reports', 'agent_evaluation', 'financial_comparability_limitations',

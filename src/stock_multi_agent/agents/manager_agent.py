@@ -350,6 +350,15 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                 suggested_action=action,
                 dimension="data",
             ))
+        if state.fundamental_result.fallback_metrics:
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.DATA_QUALITY_LIMITATION,
+                detail='Fundamental uses nearest available historical periods: ' + ', '.join(
+                    f'{name}={state.fundamental_result.metric_periods.get(name)}'
+                    for name in state.fundamental_result.fallback_metrics),
+                dimension='time',
+                suggested_action=ReanalysisAction.RESEARCH_FUNDAMENTAL,
+            ))
         if state.risk_result.confidence < 0.5:
             conflicts.append(ConflictRecord(
                 kind=ConflictKind.LOW_SPECIALIST_CONFIDENCE,
@@ -631,6 +640,11 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                 f"Các giới hạn rủi ro và yếu tố chưa chắc chắn dẫn đến kết luận {recommendation_label}."
                 + (f" Có {len(blocking_conflicts)} giới hạn dữ liệu, thời gian hoặc chính sách quan trọng chưa cho phép kết luận MUA."
                    if blocking_conflicts else "")
+                + (" Chưa đủ dữ liệu tài chính đủ mới để đánh giá cơ bản; THEO DÕI ở đây là chờ bổ sung bằng chứng, không phải đánh giá doanh nghiệp yếu."
+                   if fundamental.signal is Signal.UNKNOWN else "")
+                + (" Fundamental đã đánh giá theo kỳ gần nhất còn dùng được; một phần chỉ số là dữ liệu lịch sử, đã giảm độ tin cậy và chưa xác nhận tình hình hiện tại."
+                   if fundamental.fallback_metrics else "")
+                + (" Chưa có báo cáo nghiên cứu phù hợp kỳ đã xác minh." if not state.research_evidence else "")
             ),
             evidence=evidence,
             evidence_completeness=evidence_completeness,

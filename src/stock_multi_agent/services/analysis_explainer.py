@@ -45,13 +45,15 @@ class AnalysisExplainer:
                     'Giá trị quan sát': item.value, 'Nguồn': ', '.join(item.source_ids) or 'Chưa có lineage nguồn'} for item in result.evidence]))
         if 'fundamental' in sections:
             from stock_multi_agent.services.financial_facts import build_financial_evidence
+            from stock_multi_agent.services.financial_freshness import fundamental_inputs
+            selected = fundamental_inputs(data)
             pack = build_financial_evidence(data)
             fact_rows = [{'Chỉ tiêu': item['metric'], 'Giá trị gốc': item['value'],
                 'Đơn vị gốc': item['reported_unit'], 'Giá trị chuẩn hóa': item['normalized_value'],
                 'Tiền tệ': item['currency'], 'Dữ liệu đến kỳ': item['period_end'],
                 'Cơ sở kỳ': item['reporting_basis'], 'Hợp nhất': item['consolidation'],
                 'Assurance': item['assurance'], 'Nguồn': item['source_id']}
-                for item in pack['normalized_facts'][-32:]]
+                for item in sorted(pack['normalized_facts'], key=lambda item: item.get('period_end') or '', reverse=True)[:32]]
             if fact_rows:
                 response.tables.append(ResponseTable(title='Lịch sử chỉ tiêu có kỳ và cơ sở báo cáo',
                     columns=list(fact_rows[0]), rows=fact_rows,
@@ -66,16 +68,23 @@ class AnalysisExplainer:
             response.metadata['financial_comparability_limitations'] = pack['limitations']
             rows = []
             for metric, (label, meaning, percent) in self.METRICS.items():
-                value = getattr(data.financials, metric)
-                observations = [item for item in data.financial_observations if item.metric == metric]
+                value = selected.statements.get(metric, getattr(selected.metrics, metric))
+                period = selected.metric_periods.get(metric)
+                observations = [item for item in data.financial_observations if item.metric == metric
+                    and item.period_end == period]
                 matched = [item for item in observations if value is not None and math.isclose(item.value, value, rel_tol=1e-6, abs_tol=1e-8)]
                 periods = [item.period_end for item in matched if item.period_end]
-                sources = list(dict.fromkeys(item.source_id for item in observations))
+                sources = list(dict.fromkeys(item.source_id for item in matched))
+                if metric in selected.statements:
+                    sources = next((item['source_ids'] for item in pack['derived_metrics'] if item['metric'] == metric), [])
+                    periods = [period] if period else []
                 if not sources:
                     sources = [ref.source_id for ref in data.source_refs if ref.data_kind.value == 'FINANCIAL_RATIOS']
                 rows.append({'Chỉ tiêu': label, 'Giá trị': 'Chưa có' if value is None else f'{value:.2%}' if percent else f'{value:,.2f}',
                     'Ý nghĩa/cách đọc': meaning, 'Kỳ dữ liệu': str(max(periods)) if periods else 'Chưa đối chiếu được kỳ của giá trị này',
-                    'Nguồn': ', '.join(sources) or 'Chưa có lineage cho chỉ tiêu'})
+                    'Nguồn': ', '.join(sources) or 'Chưa có lineage cho chỉ tiêu',
+                    'Phạm vi': 'Kỳ gần nhất (lịch sử)' if metric in selected.fallback_metrics else
+                              'Kỳ hiện có' if period else 'Chưa xác minh kỳ'})
             response.tables.append(ResponseTable(title='Chỉ số doanh nghiệp và cách đọc', columns=list(rows[0]), rows=rows,
                 note='Giá trị normalized do Data/Fundamental cung cấp; không coi tỷ số thiếu là 0, không dùng ngày giá làm kỳ tài chính.'))
             result = state.fundamental_result
@@ -83,9 +92,12 @@ class AnalysisExplainer:
                 self._drivers(drivers, 'Cơ bản', result.feature_contributions, [source.source_id for source in data.source_refs])
             growth = []
             for key, label in [('revenue_growth', 'doanh thu'), ('profit_growth', 'lợi nhuận')]:
-                value = getattr(data.financials, key)
+                value = selected.statements.get(key, getattr(selected.metrics, key))
                 growth.append(f'{label} {value:+.2%}' if value is not None else f'{label} chưa có tỷ lệ tăng trưởng')
             paragraphs.append('**Doanh nghiệp và tăng trưởng:** ' + '; '.join(growth) + '. Đây là tỷ lệ do nguồn cung cấp, chưa tự gán YoY/QoQ khi thiếu kỳ so sánh. Cần đối chiếu doanh thu, biên lợi nhuận, dòng tiền và nợ; một tỷ số tốt không đủ chứng minh doanh nghiệp tốt.')
+            if selected.fallback_metrics:
+                paragraphs.append('**Kỳ đánh giá cơ bản:** dùng dữ liệu gần nhất còn hợp lệ cho các chỉ số thiếu kỳ mới. '
+                    'Xem kỳ của từng chỉ số trong bảng; dữ liệu lịch sử đã làm giảm độ tin cậy, không xác nhận tình hình hiện tại.')
         if 'risk' in sections and state.risk_result:
             risk = state.risk_result
             self._drivers(drivers, 'Rủi ro đo lường', risk.feature_contributions,

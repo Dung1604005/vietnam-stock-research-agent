@@ -142,6 +142,7 @@ def test_brave_provider_normalizes_official_api_results(monkeypatch: pytest.Monk
 
 
 def test_web_research_selects_brave_when_credential_is_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STOCK_AGENT_WEB_SEARCH_ENABLED", "true")
     monkeypatch.setenv("STOCK_AGENT_WEB_SEARCH_PROVIDER", "auto")
     monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "test-key")
     provider = WebResearchService().provider
@@ -195,6 +196,7 @@ def test_web_research_keeps_official_and_complementary_free_sources() -> None:
 
 
 def test_web_research_selects_free_chain_without_a_brave_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STOCK_AGENT_WEB_SEARCH_ENABLED", "true")
     monkeypatch.setenv("STOCK_AGENT_WEB_SEARCH_PROVIDER", "free")
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     assert isinstance(WebResearchService().provider, FreeSearchProvider)

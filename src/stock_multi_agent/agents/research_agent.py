@@ -78,18 +78,28 @@ class ResearchAgent(BaseAgent):
             archive = self.store.period_overview(context.ticker)
         citations, excluded = filter_citations(citations, scope)
         archive.extend(excluded)
-        if (not citations or follow_up_task is not None) and self.web_research is not None and state.allow_llm_planning:
-            key = (context.ticker, scope, today(), follow_up_task, follow_up_metric, follow_up_period)
+        web_limitations = []
+        web_attempted = False
+        from stock_multi_agent.services.execution_profiles import current_profile
+        # Current analysis must check live reports even when old local hits exist.
+        # Retrieval is not an LLM call; QUICK may fetch, OFFLINE must never fetch.
+        if (scope.mode == 'CURRENT' or not citations or follow_up_task is not None) and self.web_research is not None and current_profile().external_allowed:
+            web_attempted = True
+            key = (context.ticker, scope, today(), state.run_id, follow_up_task, follow_up_metric, follow_up_period)
             cached = self._web_cache.get(key)
             try:
                 if cached and cached[0] > time.monotonic():
                     citations = cached[1]
                 else:
+                    requested_period = ' '.join(map(str, scope.years)) if scope.mode == 'HISTORY' else f'mới nhất {today().year} {today().year - 1}'
                     execution = self.web_research.research(objectives.get(follow_up_task,
-                        f"{context.ticker} báo cáo tài chính mới nhất"), ticker=context.ticker)
+                        f"{context.ticker} báo cáo tài chính {requested_period} công bố chính thức"), ticker=context.ticker)
+                    undated = sum(item.published_at is None for item in execution.external_citations)
+                    if undated:
+                        web_limitations.append(f'Đã tải {undated} tài liệu nhưng chưa xác minh ngày công bố; không dùng làm bằng chứng tài chính hiện tại.')
                     fetched = [citation for item in execution.external_citations if (citation := external_to_citation(item, context.ticker))]
                     fresh, old = filter_citations(fetched, scope)
-                    citations = list({item.chunk_id: item for item in [*citations, *fresh]}.values())[:8]
+                    citations = list({item.chunk_id: item for item in [*citations, *fresh]}.values())
                     archive.extend(old)
                     self._web_cache[key] = (time.monotonic() + 600, citations)
                     if len(self._web_cache) > 100:
@@ -100,7 +110,15 @@ class ResearchAgent(BaseAgent):
                 traces.append(self.event("ACT", "FRESHNESS_WEB_FALLBACK", f"Found {len(citations)} current, dated web citations", "bounded_web_retrieval"))
             except Exception:
                 traces.append(self.event("ACT", "FRESHNESS_WEB_FALLBACK_UNAVAILABLE", "No updated document could be verified"))
+        citations, newly_excluded = filter_citations(citations, scope)
+        citations.sort(key=lambda item: (
+            str(getattr(item.document_type, 'value', item.document_type)) in {'annual_report', 'financial_statement', 'earnings_release'},
+            item.reporting_period.end or item.published_at.date(), item.published_at, item.retrieval_score), reverse=True)
+        citations = citations[:8 if expanded else 4]
+        archive.extend(newly_excluded)
         note = freshness_note(citations or archive, insufficient=not citations, historical=scope.mode == "HISTORY")
+        if web_limitations:
+            note += ' ' + ' '.join(web_limitations)
         citation_ids = [citation.chunk_id for citation in citations]
         status = "COMPLETED" if citations else "PARTIAL"
         summary = (
@@ -139,7 +157,7 @@ class ResearchAgent(BaseAgent):
                 summary=summary,
                 confidence=max((item.retrieval_score for item in citations), default=0.0),
                 output_key="research_evidence",
-                tools_used=["hybrid_vector_fts_retrieval"],
+                tools_used=["hybrid_vector_fts_retrieval", *(["bounded_web_retrieval"] if web_attempted else [])],
                 missing_information=[] if citations else ["No matching verified local document"],
                 evidence_count=len(citations),
             )],

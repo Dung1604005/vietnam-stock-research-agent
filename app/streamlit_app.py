@@ -17,7 +17,7 @@ from stock_multi_agent.services.analysis_service import AnalysisService
 from stock_multi_agent.services.price_forecast import PriceForecastService
 from stock_multi_agent.ui.components import render_assistant_message, render_user_message
 from stock_multi_agent.ui.styles import APP_CSS
-from stock_multi_agent.ui.agent_workspace import AGENTS, render_workspace
+from stock_multi_agent.ui.agent_workspace import render_workspace
 from stock_multi_agent.services.execution_profiles import execution_scope
 from stock_multi_agent.services.progress_events import ProgressSink
 from stock_multi_agent.ui.local_workspace_panel import render_local_workspace_panel
@@ -130,13 +130,14 @@ if library_open:
 st.markdown('<div class="studio-page-head"><div><h1>Không gian nghiên cứu</h1>'
     '<p>Bạn đặt câu hỏi. Đội ngũ AI cùng tìm góc nhìn.</p></div>'
     '<span class="studio-page-badge">✦ &nbsp; 6 chuyên gia · 1 đội ngũ</span></div>', unsafe_allow_html=True)
-studio_focus = st.segmented_control('Gặp đội ngũ của bạn', options=[agent.role for agent in AGENTS],
-    default='manager', format_func=lambda role: next(f'{agent.symbol} {agent.name}' for agent in AGENTS if agent.role == role),
-    key='studio_agent_focus') or 'manager'
+studio_focus = 'manager'  # Avatar selection lives in the studio; it never restarts a request.
 workspace_view = st.empty()
 latest_response = next((message.response for message in reversed(conversation.messages) if message.response), None)
-render_workspace(latest_response.metadata.get('progress_events', []) if latest_response else [],
-    tickers=conversation.active_tickers, mode=execution_mode, selected=studio_focus, target=workspace_view)
+workspace_view = render_workspace(latest_response.metadata.get('progress_events', []) if latest_response else [],
+    tickers=conversation.active_tickers, mode=execution_mode, selected=studio_focus, target=workspace_view,
+    messages=latest_response.metadata.get('agent_messages', []) if latest_response else [],
+    reports=latest_response.metadata.get('agent_reports', []) if latest_response else [],
+    trace=latest_response.agent_trace if latest_response else [])
 
 if not conversation.messages:
     st.markdown(
@@ -224,4 +225,10 @@ if prompt:
         broker_name=st.session_state.get('interaction_broker_name') or 'VNDIRECT')
     store.save(conversation)
     st.session_state.conversations = store.items
-    st.rerun()
+    # Finish in place: rerunning the whole page here discards the live scene and
+    # can move the reader away from the agent/task they are inspecting.
+    render_workspace(response.metadata.get('progress_events', sink.snapshot()),
+        tickers=conversation.active_tickers, mode=execution_mode, target=workspace_view,
+        messages=response.metadata.get('agent_messages', []),
+        reports=response.metadata.get('agent_reports', []), trace=response.agent_trace)
+    render_assistant_message(response, service.charts)

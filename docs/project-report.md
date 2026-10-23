@@ -1,9 +1,12 @@
 # Báo cáo hiện trạng dự án Stock Multi-Agent
 
+> Cập nhật sau audit: [chính sách ưu tiên báo cáo mới nhất và dự phòng kỳ gần nhất](current-report-policy.md). Fundamental dùng kỳ hợp lệ gần nhất nếu chưa có kỳ mới, ghi rõ kỳ và giảm độ tin cậy theo tuổi dữ liệu. Provider sửa luồng lấy 4 bản ghi VCI cũ nhất và mất nhãn quý. Risk giữ kiểm tra độ mới cho đánh giá hiện tại; dữ liệu lịch sử không bị đổi nhãn.
+
 Ngày đối chiếu: **23/10/2026**, theo working tree tại `D:\Download\thayque\Agent`.
 Repository có sẵn nhiều thay đổi chưa commit; báo cáo phản ánh code trên đĩa,
-không khẳng định đó là trạng thái HEAD hoặc bản đã triển khai. Lượt này cập nhật
-tài liệu, không sửa logic sản phẩm, cấu hình riêng tư hoặc model artifact.
+không khẳng định đó là trạng thái HEAD hoặc bản đã triển khai. Phần khảo sát ban đầu
+chỉ cập nhật tài liệu; các sửa đổi pipeline tài chính sau khảo sát được mô tả trong
+chính sách liên kết ở đầu báo cáo. Cấu hình riêng tư và model artifact không thuộc audit tài liệu.
 
 ## 1. Mục đích và kết quả thực tế
 

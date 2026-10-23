@@ -45,6 +45,7 @@ class ResponseComposer:
         forecast_summary = cls._forecast_summary(state)
         message = (
             f"{forecast_summary}\n\n"
+            f"{cls._financial_freshness_summary(state)}\n\n"
             f"### {state.ticker} · Phân tích {cls._horizon_label(state.investment_horizon)}\n\n"
             f"**Kỹ thuật:** {cls._signal_label(technical.signal.value)} · {technical.score:.1f}/10  \n"
             f"**Cơ bản:** {cls._signal_label(fundamental.signal.value)} · {fundamental.score:.1f}/10  \n"
@@ -98,6 +99,23 @@ class ResponseComposer:
         )
 
         return cls._enhance(response, state, ['technical', 'fundamental', 'risk'])
+
+    @staticmethod
+    def _financial_freshness_summary(state):
+        data = state.market_data
+        ratios = max((o.period_end for o in data.financial_observations if o.period_end), default=None)
+        statements = max((o.period_end for o in data.financial_statement_observations if o.period_end), default=None)
+        from stock_multi_agent.services.financial_freshness import scoring_financials
+        _, excluded = scoring_financials(data)
+        result = state.fundamental_result
+        fallback = (f'Fundamental dùng kỳ gần nhất còn hợp lệ cho {len(result.fallback_metrics)} chỉ số '
+                    f'với độ tin cậy {result.confidence:.0%}; đây là phần đánh giá dựa trên dữ liệu lịch sử. '
+                    if result and result.fallback_metrics else
+                    f'{len(excluded)} chỉ số không đủ kỳ mới đã bị loại khỏi chấm điểm hiện tại. ' if excluded else '')
+        return (f'**Độ mới từng nguồn:** Giá: {data.as_of}; kỳ chỉ số tài chính: {ratios or "chưa xác minh"}; '
+                f'kỳ báo cáo tài chính: {statements or "chưa có"}. '
+                + fallback
+                + 'Ngày tải/giá mới không làm mới kỳ báo cáo cũ.')
 
     @staticmethod
     def _forecast_summary(state: AgentState) -> str:
@@ -187,6 +205,7 @@ class ResponseComposer:
             message=(
                 f"{cls._forecast_summary(state)}\n\n"
                 f"### Phân tích cơ bản {state.ticker}\n\n"
+                f"{cls._financial_freshness_summary(state)}\n\n"
                 f"**Tín hiệu:** {result.signal.value} · **Điểm:** {result.score:.1f}/10\n\n"
                 f"{result.reasoning_summary}\n\n{evidence}"
             ),
@@ -274,6 +293,14 @@ class ResponseComposer:
         response.metadata['risk_assessment_status'] = state.risk_result.assessment_status if state.risk_result else 'NOT_REQUESTED'
         from stock_multi_agent.services.financial_facts import build_financial_evidence
         response.metadata['canonical_financial_evidence'] = build_financial_evidence(state.market_data)
+        if state.fundamental_result:
+            fundamental = state.fundamental_result
+            response.metadata.update(
+                fundamental_data_mode=fundamental.data_mode,
+                fundamental_metric_periods={name: period.isoformat() for name, period in fundamental.metric_periods.items()},
+                fundamental_fallback_metrics=fundamental.fallback_metrics,
+                fundamental_confidence=fundamental.confidence,
+            )
         response.metadata['evidence_follow_up_outcomes'] = state.evidence_follow_up_outcomes
         data = state.market_data
         response.metadata['data_origins'] = [{'group': 'market_and_financial_data',

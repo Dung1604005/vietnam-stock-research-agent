@@ -37,7 +37,7 @@ def test_quality_checker_records_unknown_adjustment_without_inventing_policy() -
     assert any(issue.code == "UNKNOWN_PRICE_ADJUSTMENT" for issue in report.issues)
 
 
-def test_stale_financial_period_is_used_with_reduced_weight() -> None:
+def test_stale_financial_period_is_used_as_explicit_low_confidence_fallback() -> None:
     data = conflict_market_data().model_copy(update={
         "financial_observations": [FinancialMetricObservation(
             metric="pe",
@@ -54,10 +54,13 @@ def test_stale_financial_period_is_used_with_reduced_weight() -> None:
     state = AgentState(ticker="FPT", investment_horizon="3 months", user_goal="Analyze FPT", market_data=data)
     result = FundamentalAgent(FinancialToolkit()).run(state)["fundamental_result"]
     assert result.signal is not Signal.UNKNOWN
+    assert result.data_mode == 'LATEST_AVAILABLE'
+    assert result.metric_periods == {'pe': date(2018, 12, 31)}
     assert result.confidence < 0.5
     assert result.policy_version == "fundamental-v3-quality-weighted"
-    assert result.feature_contributions["data_quality_penalty"] < 0
-    assert all(item.confidence == pytest.approx(0.5) for item in result.evidence)
+    assert result.feature_contributions['P/E'] == pytest.approx(0.7)
+    assert data.financials.available_count() > 0  # Historical raw values are retained.
+    assert all(item.confidence <= 0.25 for item in result.evidence)
     assert any("STALE_FINANCIALS" in weakness for weakness in result.weaknesses)
 
 

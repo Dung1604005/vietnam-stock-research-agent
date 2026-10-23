@@ -8,6 +8,7 @@ from stock_multi_agent.models.messages import AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.tools.financial_data import FinancialToolkit
 from stock_multi_agent.services.financial_facts import build_financial_evidence
+from stock_multi_agent.services.financial_freshness import fundamental_inputs, financial_age_weight
 
 
 class FundamentalAgent(BaseAgent):
@@ -33,22 +34,16 @@ class FundamentalAgent(BaseAgent):
 
     def run(self, state: AgentState, allow_llm_review: bool = True) -> dict[str, object]:
         context = FundamentalAgentContext.from_state(state)
-        metrics = context.market_data.financials
+        selected = fundamental_inputs(context.market_data)
+        metrics, freshness_notes = selected.metrics, selected.notes
+        # Only the local scoring view changes; retain the original cached payload.
+        state = state.model_copy(update={'market_data': context.market_data.model_copy(
+            update={'financials': metrics})})
         research_context = self._research_context(state)
         evidence_reliability, quality_notes = self._financial_reliability(state)
-        statement_metrics = self._statement_metrics(state)
+        quality_notes.extend(freshness_notes)
+        statement_metrics = selected.statements
         financial_evidence = build_financial_evidence(state.market_data)
-        stale_ratio_metrics = any(
-            issue.code == "STALE_FINANCIAL_RATIOS"
-            for issue in state.market_data.quality_report.issues
-        )
-        if stale_ratio_metrics:
-            # Current, period-labelled statements take precedence for metrics
-            # they can calculate. Other stale ratios remain usable at reduced weight.
-            metrics = metrics.model_copy(update={
-                **({"revenue_growth": None} if statement_metrics.get("revenue_growth") is not None else {}),
-                **({"profit_growth": None} if statement_metrics.get("profit_growth") is not None else {}),
-            })
         available = metrics.available_count()
         statement_coverage = sum(
             statement_metrics.get(name) is not None
@@ -58,9 +53,9 @@ class FundamentalAgent(BaseAgent):
         if available == 0 and statement_coverage == 0:
             result = FundamentalAnalysis(
                 signal=Signal.UNKNOWN, score=5, confidence=0.1,
-                strengths=[], weaknesses=["No usable financial metric or multi-period statement evidence is available"],
+                strengths=[], weaknesses=["No usable financial metric or multi-period statement evidence is available", *quality_notes],
                 evidence=[self._evidence(state, "Metric coverage", "No usable financial metric is available", ["financials"])],
-                reasoning_summary="Fundamental evidence is absent; no valuation conclusion is made.",
+                reasoning_summary="Chưa có chỉ số hoặc chuỗi báo cáo tài chính có kỳ và đơn vị hợp lệ để đánh giá, kể cả dữ liệu gần nhất trong lịch sử.",
                 sector_template=self._sector_template(state),
                 policy_version="fundamental-v3-quality-weighted",
                 research_context_count=len(research_context),
@@ -167,7 +162,7 @@ class FundamentalAgent(BaseAgent):
                 contributions["data_quality_penalty"] = round(-quality_penalty, 3)
             signal = Signal.BUY if score >= 7.2 else Signal.HOLD if score >= 4.2 else Signal.SELL
             coverage_confidence = min(0.9, 0.35 + self.tools.completeness(metrics) * 0.6 + 0.05 * statement_coverage)
-            confidence = max(0.1, coverage_confidence * evidence_reliability)
+            confidence = max(0.1, coverage_confidence * evidence_reliability * selected.age_weight)
             result = FundamentalAnalysis(
                 signal=signal, score=round(score, 2), confidence=round(confidence, 2),
                 strengths=strengths, weaknesses=weaknesses, evidence=evidence,
@@ -179,7 +174,8 @@ class FundamentalAgent(BaseAgent):
                 policy_version="fundamental-v3-quality-weighted",
                 feature_contributions=contributions,
                 unavailable_metrics=[
-                    name for name, value in metrics.model_dump().items() if value is None
+                    name for name, value in metrics.model_dump().items()
+                    if value is None and statement_metrics.get(name) is None
                 ] + [
                     *([] if statement_metrics.get("cash_conversion") is not None else ["cash conversion ratio"]),
                     "TTM statement series", "valuation history", "dilution/dividend history"
@@ -191,6 +187,21 @@ class FundamentalAgent(BaseAgent):
                 f"Quality-weighted fundamental score={score:.1f}/10; raw={raw_score:.1f}; reliability={evidence_reliability:.0%}",
             ))
 
+        result.metric_periods = selected.metric_periods
+        result.fallback_metrics = selected.fallback_metrics
+        has_unperioded_metrics = any(value is not None and name not in selected.metric_periods
+            for name, value in metrics.model_dump().items())
+        result.data_mode = ('UNAVAILABLE' if result.signal is Signal.UNKNOWN else
+            'LATEST_AVAILABLE' if selected.fallback_metrics else
+            'UNVERIFIED' if has_unperioded_metrics or not selected.metric_periods else 'CURRENT')
+        if selected.fallback_metrics:
+            period_summary = ', '.join(f'{name}: {selected.metric_periods[name]}' for name in selected.fallback_metrics)
+            result.reasoning_summary = (
+                f"Dùng dữ liệu gần nhất có thể ({period_summary}); chưa lấy được kỳ mới hơn cho các chỉ số này. "
+                f"Đánh giá có phần dựa trên dữ liệu lịch sử, độ tin cậy {result.confidence:.0%}. "
+                + result.reasoning_summary)
+            traces.append(self.event('REASON', 'USE_NEAREST_FINANCIAL_PERIOD', period_summary))
+
         source_ids = [
             *[source.source_id for source in state.market_data.source_refs],
             *[citation.chunk_id for citation in state.research_evidence],
@@ -201,6 +212,10 @@ class FundamentalAgent(BaseAgent):
         for item in financial_evidence['derived_metrics']:
             if used.get(item['metric']) in result.feature_contributions:
                 result.evidence.append(EvidenceItem.model_validate(item['evidence']))
+        for item in result.evidence:
+            if item.as_of and 'research_evidence' not in item.input_fields:
+                item.confidence = min(item.confidence, financial_age_weight(
+                    (state.market_data.as_of - item.as_of).days))
         result.unavailable_metrics.extend(financial_evidence['limitations'][:8])
         fact_proposals = self.llm_advisor.map_financial_facts(state.research_evidence) if (
             os.getenv('STOCK_AGENT_LLM_FACT_MAPPING_ENABLED', 'false').lower() in {'true', '1', 'on'}
@@ -236,6 +251,7 @@ class FundamentalAgent(BaseAgent):
     def review_result(self, state, result):
         if not state.allow_llm_planning:
             return None
+        selected = fundamental_inputs(state.market_data)
         canonical = build_financial_evidence(state.market_data)
         canonical['normalized_facts'] = sorted(canonical['normalized_facts'],
             key=lambda item: item.get('period_end') or '', reverse=True)[:12]
@@ -250,11 +266,15 @@ class FundamentalAgent(BaseAgent):
         result_payload['unavailable_metrics'] = result_payload['unavailable_metrics'][:10]
         return self.llm_review('Đánh giá chất lượng doanh nghiệp, tăng trưởng, định giá và dòng tiền', {
             'ticker': state.ticker, 'horizon': state.investment_horizon,
-            'reported_metrics': state.market_data.financials.model_dump(mode='json'),
+            'reported_metrics': selected.metrics.model_dump(mode='json'),
+            'financial_period_notes': selected.notes,
             'canonical_financial_evidence': canonical,
             'statements': [item.model_dump(mode='json') for item in sorted(state.market_data.financial_statement_observations,
                 key=lambda item: str(item.period_end or ''))[-12:]],
-            'metric_periods': [item.model_dump(mode='json') for item in state.market_data.financial_observations[:12]],
+            'metric_periods': [item.model_dump(mode='json') for item in state.market_data.financial_observations
+                if item.period_end == selected.metric_periods.get(item.metric)
+                and getattr(selected.metrics, item.metric, None) == item.value
+                and (item.published_at is None or item.published_at <= state.market_data.fetched_at)][:12],
             'source_provenance': [{key: item.model_dump(mode='json')[key] for key in ('source_id', 'provider', 'data_kind', 'as_of', 'fetched_at', 'source_url')} for item in state.market_data.source_refs],
             'research_context': [item.model_dump(mode='json') for item in state.research_evidence[:2]],
             'deterministic_result': result_payload,
@@ -316,8 +336,7 @@ class FundamentalAgent(BaseAgent):
         """Use the same conservative basis/unit/period checks as financial charts."""
         if state.market_data is None:
             return {}
-        return {item['metric']: item['value'] for item in
-                build_financial_evidence(state.market_data)['derived_metrics']}
+        return fundamental_inputs(state.market_data).statements
 
     @staticmethod
     def _evidence(state: AgentState, label: str, value: str, fields: list[str]) -> EvidenceItem:
@@ -334,9 +353,14 @@ class FundamentalAgent(BaseAgent):
         metric = {'P/E': 'pe', 'P/B': 'pb', 'Debt/equity': 'debt_to_equity'}.get(label,
             label.casefold().replace(' ', '_'))
         expected = getattr(data.financials, metric, None) if data else None
+        selected_period = fundamental_inputs(data).metric_periods.get(metric) if data else None
         # A different metric's latest period must never be presented as this value's period.
         observations = [item for item in (data.financial_observations if data else [])
-                        if item.metric == metric and expected is not None and abs(item.value - expected) <= 1e-8]
+                        if item.metric == metric and expected is not None and abs(item.value - expected) <= 1e-8
+                        and item.period_end and item.period_end == selected_period
+                        and (item.published_at is None or item.published_at <= data.fetched_at)]
+        latest_period = max((item.period_end for item in observations), default=None)
+        observations = [item for item in observations if item.period_end == latest_period]
         financial_periods = [item.period_end for item in observations if item.period_end]
         observation_source_ids = {item.source_id for item in observations}
         return EvidenceItem(

@@ -1,5 +1,7 @@
 # Kiến trúc hiện tại
 
+> Chính sách tài chính cập nhật: [current-report-policy.md](current-report-policy.md). Fundamental ưu tiên kỳ mới nhất, khi thiếu dùng kỳ gần nhất còn hợp lệ và giảm độ tin cậy theo tuổi dữ liệu; Risk giữ bộ lọc cho đánh giá hiện tại. Provider đọc đúng năm/quý, tránh lấy 4 bản ghi cũ nhất của VCI. Research CURRENT kiểm web cả khi local có citation và không phụ thuộc bật LLM. Các đoạn khảo sát trước thay đổi cần đọc theo chính sách mới này.
+
 > Tài liệu chi tiết hiện hành. Báo cáo tổng hợp, ma trận bằng chứng và kiểm chứng mới: [project-report.md](project-report.md). Cấu hình endpoint, trạng thái Scheduler và corpus live không được xác nhận chỉ từ code.
 
 Tài liệu này mô tả repository được đối chiếu lại với working tree ngày 23/10/2026. Các giới hạn checkpoint, deadline và kết quả partial được trình bày thêm trong [multi-agent reliability](multi-agent-reliability.md).

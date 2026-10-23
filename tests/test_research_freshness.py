@@ -238,12 +238,26 @@ def test_research_agent_does_not_pass_old_local_reports_to_specialists(store):
     assert web.calls == 1  # Failed-update results are cached to avoid repeated slow searches.
 
 
-def test_batch_research_does_not_start_per_ticker_web_search(store):
+def test_current_research_checks_web_even_when_llm_planning_is_disabled(store):
     ingest(store, "FPT báo cáo tài chính năm 2022", published="2026-10-17")
     web = OfflineResearch()
     state = AgentState(ticker="FPT", investment_horizon="3 months", user_goal="Analyze FPT", allow_llm_planning=False)
     assert not ResearchAgent(store, web_research=web).run(state)["research_evidence"]
-    assert web.calls == 0
+    assert web.calls == 1  # Latest-report verification no longer depends on LLM planning.
+
+
+def test_agent_checks_newer_web_reports_even_with_eligible_local_report(store):
+    ingest(store)
+    from stock_multi_agent.models.research import EvidenceBundle
+    local = store.search('FPT báo cáo tài chính', ticker='FPT', scope=ResearchScope('CURRENT'))
+    assert local.citations
+    selected_store = SimpleNamespace(search=lambda *args, **kwargs: EvidenceBundle(
+        query=args[0], citations=local.citations, retrieval_note='eligible local fixture'))
+    web = OfflineResearch()
+    result = ResearchAgent(selected_store, web_research=web).run(
+        AgentState(ticker='FPT', investment_horizon='3 months', user_goal='Analyze FPT'))
+    assert web.calls == 1
+    assert result['research_evidence']
 
 
 def test_external_old_report_with_recent_publication_is_filtered(store):

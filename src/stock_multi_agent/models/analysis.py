@@ -156,6 +156,9 @@ class FundamentalAnalysis(BaseModel):
     feature_contributions: dict[str, float] = Field(default_factory=dict)
     unavailable_metrics: list[str] = Field(default_factory=list)
     research_context_count: int = Field(default=0, ge=0)
+    data_mode: str = Field(default='UNVERIFIED', pattern=r'^(CURRENT|LATEST_AVAILABLE|UNVERIFIED|UNAVAILABLE)$')
+    metric_periods: dict[str, date] = Field(default_factory=dict)
+    fallback_metrics: list[str] = Field(default_factory=list)
 
 
 class RiskAnalysis(BaseModel):

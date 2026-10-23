@@ -225,7 +225,8 @@ def build_interaction_actions(response: AssistantResponse, *, broker_url_templat
                 description += f' Nguồn: {publisher[:200]}.'
             for ticker in _citation_tickers(item, tickers):
                 try:
-                    actions.append(_action(kind, f'{"Báo cáo" if kind == "REPORT" else "Nguồn"} · {title}', url,
+                    label = 'Tài liệu lịch sử' if mode == 'historical' else 'Báo cáo' if kind == 'REPORT' else 'Nguồn'
+                    actions.append(_action(kind, f'{label} · {title}', url,
                         ticker, description=description, published_at=_timestamp(item.get('published_at')), period_label=period_label))
                 except ValueError:
                     continue
