@@ -1,5 +1,7 @@
 # Phase C — Internet Research Audit
 
+> HISTORICAL AUDIT — snapshot 10/10/2026, được giữ để truy nguyên vấn đề. Các từ “current”, “missing”, “never fetch” bên dưới chỉ áp dụng mốc đó. Đến 23/10, code đã có hybrid vector/FTS, bounded discovery/fetch/extract, HTML/PDF text layer, synthesis và crawler/versioning. Dùng [báo cáo hiện trạng](project-report.md), [Phase C hiện hành](phase-c-research-evidence.md) và [crawler](automatic-research-crawler-implementation.md) cho báo cáo hôm nay.
+
 **Audit date:** 2026-10-10  
 **Scope:** current repository state only. This document distinguishes implemented behaviour from the target described in the Internet Research / Agentic RAG task.
 

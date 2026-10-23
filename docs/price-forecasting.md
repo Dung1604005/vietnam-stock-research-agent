@@ -1,32 +1,71 @@
-# Price Forecasting Boundary
+# Price forecasting: implemented models and policy
 
-## What is available now
+Reviewed 23/10/2026. Forecasting is a Python model service, not an additional LLM agent.
 
-Every single-ticker analysis displays the latest observed close, its market-data `as_of` date, and a next-session estimate. Until a trained model is supplied, that estimate uses `rolling-mean-return-baseline-v1`: the mean daily return of the latest 20 sessions plus a volatility diagnostic range.
+## Construction and loading
 
-Its status is always `BASELINE_UNTRAINED` and confidence is `0`. It is a visible integration baseline, not a validated prediction, investment recommendation, or trade instruction.
+`PriceForecastService(trained_model=...)` accepts an adapter. A bare
+`PriceForecastService()` and the default constructor of `AnalysisService()` use
+the explicitly untrained rolling-return baseline. Environment-aware construction
+uses `PriceForecastService.from_environment(...)`; UI can defer model loading and
+select V2 or V4 per session without modifying .env. The current CLI constructs
+bare `AnalysisService()` and therefore also uses the baseline. A configured model
+name does not prove its artifact was loaded.
 
-## Deep-learning integration later
+| Path | Runtime behaviour / limit |
+|---|---|
+| Baseline | Mean of last 20 observed session returns; BASELINE_UNTRAINED, confidence 0, zero Technical weight |
+| V2 | Existing frozen adapter/default selection when LSTM is enabled; legacy demo policy, not revalidated by newer gates |
+| V3 | Explicit artifact directory; eligibility and blend weight checked; optional shadow remains zero weight |
+| V4 | Explicit selected archive; UI opt-in experimental blend; gate/eligibility metadata remains unchanged |
+| Invalid/missing artifact or inference error | Labelled baseline fallback, no baseline scoring; no silent V4-to-V2 substitution |
 
-`PriceForecastService` accepts a `PriceForecastModel` implementation. A trained adapter must implement `predict_next_session(market_data)` and return a `PriceForecast` with:
+Deferred UI forecast uses baseline in QUICK/OFFLINE and avoids loading TensorFlow
+solely for startup/readiness. This is a property of that construction path, not a
+claim that arbitrary injected model services have the same loading behaviour.
 
-- `status=TRAINED_MODEL`;
-- the same ticker and `as_of` date as the input data;
-- model version, horizon, point forecast, uncertainty bounds and calibrated confidence;
-- a reproducible model artifact and feature/data version.
+## Blend contract
 
-Do not train or report a deep-learning forecast until Phase F has a point-in-time dataset with adjusted-price policy, train/validation/test time splits, a naive baseline comparison, and out-of-sample error/calibration metrics. The forecasting service is deterministic infrastructure, not another LLM agent. A valid one-session `TRAINED_MODEL` forecast is converted to a bounded 0-10 signal and contributes 20% to the Technical Agent score; indicator evidence contributes 80%. Baseline/unavailable forecasts contribute nothing.
+TechnicalAgent._apply_lstm_blend checks TRAINED_MODEL, one-session horizon,
+valid current/forecast prices, usable Technical history, eligibility and weight.
+The explicit V4 experimental path additionally checks model version,
+VERIFIED_FILES, opt-in flag and 0.2 weight; it does not change policy_eligibility
+to true. Merely returning TRAINED_MODEL is insufficient for newer artifacts.
 
-The runtime blend is `final_score = 0.80 * indicator_score + 0.20 * lstm_score`. The next-session predicted return is mapped linearly onto 0-10: -3% maps to 0, 0% maps to 5, and +3% maps to 10; values outside that range are clipped. The response records the pre-blend score, LSTM score, predicted return, weights and score delta in Technical diagnostics.
+For the 20% demo blend:
 
-## Collecting an offline LSTM experiment dataset
+```text
+return = forecast_price / current_price - 1
+lstm_score = 5 + 5 * clip(return, -0.03, 0.03) / 0.03
+final_technical_score = 0.8 * indicator_score + 0.2 * lstm_score
+```
 
-The project includes a resumable real-data collector. It writes one row per observed ticker/session with raw `date/open/high/low/close/volume`, provenance, and labels from the *next observed session* (`target_date`, `next_session_close`, `next_session_return`). It does not fabricate missing sessions or OHLCV values.
+The code caps declared model weight at 0.2 and can accept a smaller eligible
+weight. Baseline/unavailable/shadow forecasts contribute zero. Diagnostics retain
+version, pre-blend score, weights, return and score delta. 20% is a policy weight,
+not accuracy or expected return. One/five-session estimates are not three-month targets.
+Intervals/confidence are diagnostics unless independently calibrated.
+
+## Code and model evidence
+
+- `src/stock_multi_agent/services/price_forecast.py`: loading, fallback and deferred service.
+- `src/stock_multi_agent/services/lstm_forecast.py`, `lstm_forecast_v3.py`, `lstm_forecast_v4.py`: adapters.
+- `src/stock_multi_agent/agents/technical_agent.py`: _apply_lstm_blend.
+- `app/streamlit_app.py`: session model selection and service construction.
+- [V2 reproduction](lstm-kaggle-training.md), [V3 model card](lstm-v3-model-card.md), [V4 development review](lstm-v4-research-and-training.md), [UI selection](lstm-ui-model-selection.md).
+
+V3/V4 historical GPU artifact reviews are separate from software regression.
+This documentation audit does not rerun GPU training, large-artifact checksum
+audits or forward-market evaluation; their prior reports retain dated scope.
+
+## Dataset collection
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\collect_lstm_ohlcv_dataset.py --target-rows 100000
 ```
 
-The output is kept outside Git at `.runtime/ml/vci_ohlcv_lstm_100k.csv` alongside metadata containing the source, ticker failures, requested lookback, schema, row count and SHA-256. The command can be safely rerun to continue after a rate limit or interrupted terminal session: already completed tickers are skipped.
-
-By default it requests four calendar years per current VCI-listed ticker, so it usually needs materially fewer API calls than the chat-facing 550-day history. Its current-listing catalogue has survivorship bias and VCI prices have `UNKNOWN` adjustment status. It is suitable for a classroom LSTM experiment only, not a historical performance claim or trading recommendation.
+The resumable collector writes observed OHLCV and next-observed-session labels
+with provenance/metadata in .runtime/ml on D. Current-listing selection has
+survivorship bias and unknown adjustment status; it is not sufficient for a
+validated historical investment study. New experiments need time-aware splits,
+train-only preprocessing, baseline comparisons and separate eligibility gates.

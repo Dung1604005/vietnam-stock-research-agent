@@ -6,7 +6,13 @@ from functools import lru_cache
 from typing import Protocol, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from stock_multi_agent.services.request_telemetry import observed
+from stock_multi_agent.services.request_telemetry import check_deadline, observed, remaining_seconds
+
+
+def _transport_timeout(configured: float) -> float:
+    check_deadline()
+    remaining = remaining_seconds()
+    return min(configured, remaining) if remaining is not None else configured
 
 
 class LLMProvider(Protocol):
@@ -41,7 +47,7 @@ class OpenAIProvider:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError("Install the 'llm' extra to use OpenAI") from exc
-        response = OpenAI(timeout=self.timeout_seconds, max_retries=0).responses.create(
+        response = OpenAI(timeout=_transport_timeout(self.timeout_seconds), max_retries=0).responses.create(
             model=self.model,
             max_output_tokens=getattr(self, 'max_output_tokens', 640),
             instructions=system,
@@ -57,7 +63,7 @@ class OpenAIProvider:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError("Install the 'llm' extra to use OpenAI") from exc
-        response = OpenAI(timeout=self.timeout_seconds, max_retries=0).responses.parse(
+        response = OpenAI(timeout=_transport_timeout(self.timeout_seconds), max_retries=0).responses.parse(
             model=self.model,
             max_output_tokens=getattr(self, 'max_output_tokens', 640),
             instructions=system,
@@ -106,7 +112,7 @@ class OllamaProvider:
             **self._generation_settings(),
         }).encode()
         request = Request(f"{self.base_url}/api/generate", data=body, headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - configured local provider
+        with urlopen(request, timeout=_transport_timeout(self.timeout_seconds)) as response:  # noqa: S310 - configured local provider
             return str(json.loads(response.read())["response"])
 
     @observed("llm.ollama.structured", "llm")
@@ -122,7 +128,7 @@ class OllamaProvider:
             **self._generation_settings(),
         }).encode()
         request = Request(f"{self.base_url}/api/generate", data=body, headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - configured local provider
+        with urlopen(request, timeout=_transport_timeout(self.timeout_seconds)) as response:  # noqa: S310 - configured local provider
             content = str(json.loads(response.read())["response"])
         return output_model.model_validate_json(content)  # type: ignore[attr-defined,no-any-return]
 
@@ -190,7 +196,7 @@ class ColabQwenProvider:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - user-configured endpoint
+            with urlopen(request, timeout=_transport_timeout(self.timeout_seconds)) as response:  # noqa: S310 - user-configured endpoint
                 decoded = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             raise RuntimeError(f"Colab Qwen returned HTTP {exc.code}") from exc
@@ -224,7 +230,7 @@ class ColabQwenProvider:
             raise RuntimeError('Colab Qwen URL/token is not configured')
         request = Request(self.base_url + '/health', headers={'Authorization': 'Bearer ' + self.api_token})
         try:
-            with urlopen(request, timeout=min(self.timeout_seconds, 10)) as response:
+            with urlopen(request, timeout=_transport_timeout(min(self.timeout_seconds, 10))) as response:
                 decoded = json.loads(response.read().decode('utf-8'))
         except HTTPError as exc:
             raise RuntimeError(f'Colab Qwen health returned HTTP {exc.code}') from exc

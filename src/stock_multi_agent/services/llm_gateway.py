@@ -13,7 +13,7 @@ from enum import Enum
 from threading import RLock
 
 from stock_multi_agent.services.claim_grounding import unsupported_numbers
-from stock_multi_agent.services.request_telemetry import BudgetExceeded, current_metrics
+from stock_multi_agent.services.request_telemetry import BudgetExceeded, check_deadline, current_metrics, remaining_seconds
 
 PROMPT_VERSION = 'agent-evidence-v3-claim-anchors'
 _HUMAN_FIELDS = {'assessment', 'supporting_observations', 'counterarguments', 'missing_information',
@@ -34,8 +34,9 @@ def _human(value, field=''):
 class LLMGateway:
     """Result is a proposal. Scores/decisions remain owned by deterministic agents.
 
-    Transport timeouts are clamped to remaining request time. No background
-    thread survives a timeout. Providers without timeout support are test-only.
+    Supported transport timeouts are clamped to remaining request time. Calls
+    without cancellation support stop cooperatively once they return; no worker
+    thread is started that could outlive a timed-out request.
     Health reflects observed successful/failed calls, not an extra generation.
     """
     def __init__(self, provider, *, clock=time.monotonic, cache_seconds=120, failure_threshold=2, cooldown_seconds=30):
@@ -66,6 +67,7 @@ class LLMGateway:
         from urllib.request import Request, urlopen
         from stock_multi_agent.services.execution_profiles import assert_external_allowed
         assert_external_allowed('llm.health_probe')
+        check_deadline()
         endpoint = getattr(self.provider, 'base_url', '')
         if not endpoint:
             return self.health()
@@ -75,15 +77,21 @@ class LLMGateway:
             headers['Authorization'] = f'Bearer {token}'
         suffix = '/health' if type(self.provider).__name__ == 'ColabQwenProvider' else '/api/tags'
         try:
-            with urlopen(Request(endpoint + suffix, headers=headers), timeout=3) as response:
+            remaining = remaining_seconds()
+            with urlopen(Request(endpoint + suffix, headers=headers), timeout=min(3, remaining) if remaining is not None else 3) as response:
                 json.loads(response.read(64000))
+            check_deadline()
             return {**self.health(), 'connectivity': 'AVAILABLE'}
+        except BudgetExceeded:
+            raise
         except Exception:
+            check_deadline()
             return {**self.health(), 'connectivity': 'UNAVAILABLE'}
 
     def parse_structured(self, system, payload, output_model):
         from stock_multi_agent.services.execution_profiles import assert_external_allowed
         assert_external_allowed('llm.generation')
+        check_deadline()
         metrics = current_metrics()
         if metrics and metrics.budget.max_llm_calls == 0:
             raise BudgetExceeded('Execution profile disables LLM generation and cached LLM reviews')
@@ -96,6 +104,7 @@ class LLMGateway:
         digest = hashlib.sha256((json.dumps(identity, sort_keys=True) + prompt + packed + json.dumps(output_model.model_json_schema(), sort_keys=True)).encode()).hexdigest()
         metrics = current_metrics()
         with self._lock:
+            check_deadline()
             hit = self._cache.get(digest)
             if hit and self.clock() - hit[0] < self.cache_seconds:
                 if metrics:
@@ -110,14 +119,12 @@ class LLMGateway:
             call_timeout = 45
         if hasattr(raw_provider, 'timeout_seconds'):
             raw_provider.timeout_seconds = min(raw_provider.timeout_seconds, call_timeout)
+        remaining = remaining_seconds()
+        if remaining is not None and hasattr(raw_provider, 'timeout_seconds'):
+            raw_provider.timeout_seconds = min(raw_provider.timeout_seconds, remaining)
         if metrics:
-            remaining = metrics.budget.deadline_seconds - (time.perf_counter() - metrics.started)
-            if remaining <= 1:
-                raise BudgetExceeded('No time left for LLM')
             if metrics.output_token_upper_bound >= metrics.budget.max_output_tokens:
                 raise BudgetExceeded('LLM output budget exhausted')
-            if hasattr(raw_provider, 'timeout_seconds'):
-                raw_provider.timeout_seconds = min(raw_provider.timeout_seconds, max(1, remaining - 0.5))
             cap = 1024 if output_model.__name__ in {'_StructuredReview', '_CompactVietnameseReview', '_StatementFacts'} else 640
             raw_provider.max_output_tokens = min(cap, metrics.budget.max_output_tokens - metrics.output_token_upper_bound)
         started = self.clock()
@@ -127,21 +134,22 @@ class LLMGateway:
             # the same request budget; invalid schemas/language are not retried.
             for attempt in range(2):
                 try:
+                    check_deadline()
+                    remaining = remaining_seconds()
+                    if remaining is not None and hasattr(raw_provider, 'timeout_seconds'):
+                        raw_provider.timeout_seconds = min(raw_provider.timeout_seconds, remaining)
                     method = raw_provider.parse_structured
                     if metrics and not hasattr(method, '__wrapped__'):
                         metrics.consume('llm')
                     result = method(prompt, payload, output_model)
+                    check_deadline()
                     break
                 except (ConnectionError, TimeoutError, OSError):
+                    check_deadline()
                     if attempt or (metrics and metrics.llm_calls >= metrics.budget.max_llm_calls):
                         raise
                     if metrics:
                         metrics.retries += 1
-                        remaining = metrics.budget.deadline_seconds - (time.perf_counter() - metrics.started)
-                        if remaining <= 1:
-                            raise BudgetExceeded('Deadline exhausted before retry')
-                        if hasattr(raw_provider, 'timeout_seconds'):
-                            raw_provider.timeout_seconds = min(raw_provider.timeout_seconds, remaining - .5)
             result = output_model.model_validate(result.model_dump() if hasattr(result, 'model_dump') else result)
             serialized = result.model_dump(mode='json')
             if metrics:

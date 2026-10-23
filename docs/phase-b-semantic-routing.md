@@ -17,7 +17,7 @@ Nền tảng Phase B đã được triển khai mà không thay đổi financial
 
 `RoutingPlan.steps` còn là compatibility view cho UI/caller cũ. `ChatService` validate thêm một lần trước dispatch và trả lỗi an toàn nếu plan không hợp lệ.
 
-Task plan hiện là declaration có kiểm soát của công việc dự kiến. Full analysis vẫn chạy `StockAgentGraph`; technical/fundamental/risk route vẫn dùng `AnalysisService`, và chart/market/discovery/comparison vẫn là methods hiện có của `ChatService`. Không có claim rằng generic DAG executor đã tồn tại.
+Đối chiếu 23/10/2026: task plan đã được gắn với thực thi qua `ChatPlanExecution` và `PlanExecutor`, kiểm tra task được duyệt, dependency, artifact/schema thực tế và trạng thái hoàn thành. Full analysis vẫn chạy `StockAgentGraph`; selective/batch dùng service hiện có như các capability/composite có giới hạn. Đây không phải executor cho code/DAG bất kỳ do LLM tự sinh.
 
 ### Semantic telemetry
 
@@ -44,7 +44,7 @@ Metadata parser được lưu bền trong `.runtime/telemetry/semantic.sqlite3`:
 .\.venv\Scripts\python.exe scripts\evaluate_semantics.py --show-errors --write-report
 ```
 
-Report JSON được lưu ở `.runtime/evaluations/`. Holdout được truyền riêng qua `--holdout`; evaluator từ chối query trùng với regression sau chuẩn hóa. Thư mục [evaluation/semantic_holdout](../evaluation/semantic_holdout) chỉ có hướng dẫn, không có data gán nhãn giả.
+Report JSON được lưu ở `.runtime/evaluations/`. Holdout được truyền riêng qua `--holdout`; evaluator từ chối query trùng với regression sau chuẩn hóa. Thư mục [evaluation/semantic_holdout](../evaluation/semantic_holdout) có hướng dẫn và synthetic-v1.json được ghi rõ là synthetic smoke/acceptance, không phải query thật hoặc holdout độc lập.
 
 ## Safety boundary
 
@@ -55,12 +55,11 @@ LLM chỉ trả `SemanticQuery`; deterministic entity extraction vẫn ghi đè 
 - Typed dependencies và budget của full-analysis plan.
 - Rejection cho forward dependency và missing input.
 - Structured LLM success, safe deterministic fallback khi LLM lỗi, và parser telemetry.
-- Full semantic regression dataset 120 cases.
+- Full semantic regression dataset 126 cases (chạy lại 23/10/2026, intent/ticker 126/126, ECE 0.0507).
 
 ## Gates còn mở
 
 - Thu thập holdout độc lập từ query thật đã ẩn danh và được gán nhãn ngoài example bank khi hệ thống có traffic/tester.
 - Dùng holdout để calibrate confidence theo intent/entity/clarification và đặt threshold có căn cứ.
 - Thêm alerting/retention policy cho telemetry và provider usage/token/cost khi adapter hỗ trợ usage metadata.
-- Chỉ xây generic task executor khi nhiều route thực sự cần scheduling/retry/dependency runtime ngoài graph hiện hữu.
-- Thêm route `RESEARCH/EVIDENCE` khi Phase C có retrieval service; không tạo route giả trước đó.
+- Task executor có kiểm output và route RESEARCH đã có; scheduling tùy ý/code generation không thuộc phạm vi hiện tại.

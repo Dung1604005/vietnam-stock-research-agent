@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import TypeVar
-from stock_multi_agent.services.request_telemetry import current_metrics
+from stock_multi_agent.services.request_telemetry import (
+    BudgetExceeded, bounded_sleep, check_deadline, current_metrics, remaining_seconds,
+)
 
 
 T = TypeVar("T")
@@ -100,13 +102,17 @@ class RateLimiter:
         self.total_wait_seconds = 0.0
 
     def acquire(self) -> None:
+        check_deadline()
         with self._lock:
+            check_deadline()
             now = self.clock()
             wait_seconds = max(0.0, self._next_allowed - now)
             if wait_seconds:
-                self.total_wait_seconds += wait_seconds
-                self.sleeper(wait_seconds)
+                remaining = remaining_seconds()
+                self.total_wait_seconds += min(wait_seconds, remaining) if remaining is not None else wait_seconds
+                bounded_sleep(wait_seconds, self.sleeper)
                 now = self.clock()
+            check_deadline()
             self._next_allowed = max(now, self._next_allowed) + self.min_interval_seconds
 
 
@@ -130,29 +136,39 @@ class ResilientExecutor:
         self.retries_total = 0
 
     def run(self, operation: Callable[[], T]) -> T:
+        check_deadline()
         self.breaker.before_call()
         last_error: Exception | None = None
         for attempt in range(1, max(1, self.policy.max_attempts) + 1):
             try:
+                check_deadline()
                 self.rate_limiter.acquire()
+                check_deadline()
                 self.attempts_total += 1
+                self.retries_total += int(attempt > 1)
                 metrics = current_metrics()
                 if metrics:
-                    metrics.api_calls += 1
-                    metrics.retries += int(attempt > 1)
+                    with metrics._lock:
+                        metrics.api_calls += 1
+                        metrics.retries += int(attempt > 1)
                 result = operation()
+                check_deadline()
                 self.breaker.success()
                 self.successful_operations += 1
                 return result
+            except BudgetExceeded:
+                # A caller's expired deadline is not a provider outage and must
+                # neither retry nor open the provider circuit.
+                raise
             except Exception as exc:
+                check_deadline()
                 last_error = exc
                 # Repeating an explicit quota response burns more of the same
                 # quota and makes the user's wait longer. Fail once instead.
                 if is_rate_limit_error(exc):
                     break
                 if attempt < self.policy.max_attempts:
-                    self.retries_total += 1
-                    self.sleeper(self.policy.base_delay_seconds * (2 ** (attempt - 1)))
+                    bounded_sleep(self.policy.base_delay_seconds * (2 ** (attempt - 1)), self.sleeper)
         self.breaker.failure()
         self.failed_operations += 1
         assert last_error is not None

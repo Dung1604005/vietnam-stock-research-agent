@@ -1,5 +1,9 @@
 # Triển khai Phase 6–8 và cách chạy
 
+> Cập nhật phạm vi 23/10/2026: các ô “Train GPU” bên dưới là handoff ở mốc triển khai, đã có review artifact LSTM V3/V4 sau đó. Xem [V3 card](lstm-v3-model-card.md), [V4 review](lstm-v4-research-and-training.md), [V2/V4 UI](lstm-ui-model-selection.md). Không đồng nhất train hoàn tất với promotion/forward gate.
+
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
 Cập nhật 18/10/2026. Phạm vi: engineering, notebook training và demo; không broker/đặt lệnh, không tuyên bố chất lượng đầu tư chỉ từ test phần mềm. Code mới giữ V2, không sửa `.env`, không tự tải model, upload dữ liệu hay cài training dependencies lên laptop.
 
 ## 1. Trạng thái bàn giao

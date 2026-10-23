@@ -1,5 +1,7 @@
 # Demo: biểu đồ, giải thích và LLM Fundamental/Risk
 
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
 ## Thay đổi
 
 Fundamental và Risk dùng provider chung đã cấu hình (Colab Qwen nếu
@@ -11,12 +13,12 @@ Fundamental và Risk dùng provider chung đã cấu hình (Colab Qwen nếu
 - Risk nhận kết quả Technical/Fundamental/Risk cuối cùng, nguồn, research và
   forecast; phản biện, giải thích từng nhóm rủi ro, kịch bản bất lợi có điều kiện.
 - Trong full graph, hai review chạy **sau khi xử lý xung đột kết thúc**, mỗi
-  role một lần trên evidence cuối. Không gọi LLM lại trong từng vòng rerun.
+  role một lần ở stage review cuối trên evidence hiện có. Nếu Manager chấp thuận follow-up có bằng chứng mới, có thể có review bổ sung trong ngân sách; không gọi review LLM trong mỗi vòng deterministic rerun.
 - Hai review có thể giúp Manager tổng hợp, nhưng không tự sửa giá, công thức,
   điểm số, veto hoặc nhãn kết luận. Không hứa làm dự báo chính xác hơn chỉ vì
   thêm lời nhận xét LLM. Failure hiển thị là failure, không gắn nhãn lời mẫu là LLM.
 
-Đã bật profile trong `.env` hiện tại, giữ nguyên key/token:
+Ví dụ cấu hình profile (không phải xác nhận nội dung `.env` riêng tư hiện tại):
 
 ```dotenv
 STOCK_AGENT_LLM_SPECIALISTS_ENABLED=true

@@ -1,113 +1,118 @@
 # Architecture
 
-## Overall architecture
+Reviewed against the working tree on 23/10/2026. This document describes implemented
+behaviour; [the current project report](project-report.md) includes evidence and
+[the documentation register](README.md) distinguishes current guides from historical reports.
 
-The application is an educational conversational decision-support system, not a trading system. `ChatService` parses natural language, resolves bounded conversation context, and selects a minimal route. `AnalysisService` remains the stable core API and can run either the full LangGraph or selected existing agents. No component contains broker credentials or order APIs.
+## Application layers
+
+Streamlit/CLI → ChatService or AnalysisService → typed contracts → bounded agents,
+tools and providers. Chat uses hybrid semantic NLU and IntentRouter to create a
+validated RoutingPlan. ChatPlanExecution/PlanExecutor execute the approved tasks,
+validate actual output artifacts and retain task status. Full graph and batch
+operations remain service-owned composites, not arbitrary generated code/DAGs.
+
+Code: `chat/router.py`, `services/chat_plan_execution.py`, `services/plan_executor.py`,
+`services/analysis_service.py`, `graph/stock_agent_graph.py` under `src/stock_multi_agent/`.
+
+## Routes
+
+| Request | Implemented route / boundary |
+|---|---|
+| Full analysis | Manager → Data → Forecast → Research → parallel Technical/Fundamental → Risk → review → bounded follow-up → finalize |
+| Technical / indicator | Data → optional Forecast → Technical; no Fundamental/Risk required |
+| Fundamental | Data → Forecast when enabled by caller → Research → Fundamental |
+| Risk | Data/benchmark → Forecast → Research → Technical/Fundamental → Risk; selective API executes stages sequentially |
+| Chart | Data → deterministic ChartService; no investment specialists required |
+| Comparison | Full per-ticker analysis plus field-alignment checks |
+| Discovery | Bounded current universe → technical screen → successive halving |
+| Recommendation | Cheap screen → bounded full analysis shortlist → qualified buckets and disclosed REFERENCE_ONLY shortfall fallback |
+| THEORY / CURRENT_RULE / MIXED | Deterministic KnowledgeService; MIXED also acquires relevant real metrics |
+| Research question | Local hybrid RAG; bounded external discovery/fetch/extraction when needed |
+
+## Full-analysis graph
 
 ```mermaid
-flowchart LR
-    UI[Chat-first Streamlit / CLI] --> C[ChatService]
-    C --> Q[QueryParser + IntentRouter]
-    Q <--> M[(ConversationState)]
-    Q --> S[AnalysisService]
-    S --> G[LangGraph supervisor graph]
-    S --> X[Selective agent routes]
-    G --> A[Six bounded agents]
-    X --> A
-    A --> T[Pure tools]
-    T --> P[vnstock real-data provider]
-    A -. Typed routing, Technical tool planning, grounded summary .-> L[Colab Qwen / OpenAI / Ollama provider]
-    G <--> ST[(AgentState)]
-    C --> R[ResponseComposer]
-    R --> CH[ChartService / Plotly]
-    CH --> UI
+flowchart TD
+    S[START] --> M[Manager.plan]
+    M --> D[Data]
+    D --> P[Forecast service]
+    P --> R[Research]
+    R --> DS[Manager.dispatch_specialists]
+    DS --> T[Technical]
+    DS --> F[Fundamental]
+    T --> J[Join / dispatch_risk]
+    F --> J
+    J --> K[Risk]
+    K --> V[Manager.review]
+    V -->|TECHNICAL| TR[Extended Technical + Risk]
+    V -->|RESEARCH_FUNDAMENTAL| RF[Research + Fundamental + Risk]
+    V -->|DATA_PIPELINE| DP[Refresh data + forecast + research + specialists + risk]
+    TR --> V
+    RF --> V
+    DP --> V
+    V -->|stop| SR[Optional specialist reviews]
+    SR --> EF[Manager-approved evidence follow-up]
+    EF --> FIN[Manager.finalize]
+    FIN --> E[END]
 ```
 
-## Conversational routing
+The default re-analysis limit is two; QUICK/OFFLINE initial states set it to zero.
+History, evidence fingerprints, deadlines and follow-up approval further bound work.
+A risk veto without a recoverable data issue is not an instruction to rerun until BUY.
+See [conflict resolution](conflict-resolution.md).
 
-| Intent | Route |
-|---|---|
-| Stock analysis | Data → Forecast → Research → Technical + Fundamental → Risk → Manager |
-| Technical / RSI / MACD | Data → Technical |
-| Fundamental | Data → Fundamental |
-| Risk | Data → Technical + Fundamental → Risk |
-| Chart | Data → deterministic ChartService |
-| Market overview | VN-Index Data → market calculation → Manager |
-| Discovery | Configured 100-symbol watchlist → Technical quick screen → successive-halving top-K |
-| Recommendation | Quick screen → full multi-agent analysis of survivors → two deterministic risk/return buckets |
-| Manager routing | Optional structured LLM intent selection → deterministic route validation and agent plan |
-| Comparison | Full analysis per ticker → comparison synthesis |
+## Specialization and authority
 
-`ConversationState` keeps active tickers, last intent/horizon/chart period, latest analysis, latest stock list, preferences, a bounded message window, and a compact summary of trimmed messages. Raw history is never allowed to grow without limit.
+Six role classes declare AgentSpec. Data never calls LLM. Research supplies citations;
+Technical/Fundamental own separate analyses; Risk supplies critique/veto; Manager
+owns final decision. Selected roles can share one configured LLM provider with
+different schemas/prompts. Six roles do not imply six models or six LLM calls.
 
-## Agent architecture
+AgentSpec.allowed_tools documents capability scope. Actual tool selection has
+specific allowlists; it is not a Python sandbox. `agent_execution.OUTPUTS` and
+`validate_update()` check state writes, message sender, reports and final-decision
+authority. Typed context models select relevant inputs but agents still execute
+in one process with shared AgentState; this is not process isolation.
 
-Every agent has a typed `AgentSpec` (role, goal, required context, tool allowlist, output and constraints), observes a validated context model, and emits an `AgentExecutionReport`. Tools contain calculations but no BUY/HOLD policy. Technical may use the LLM only to select at most two allowlisted diagnostics. Manager may select a typed intent and summarize completed evidence. Python owns all numbers, scores and decisions.
+Python owns all indicators, scores, signals, veto and recommendation policy.
+Technical may ask LLM to select at most two supplemental diagnostics. Fundamental
+and Risk can review evidence and propose bounded follow-up; Manager approves it.
+Forecast is a model service, Knowledge/RAG/retrieval/chart components are services,
+not additional roles. [Role-to-code presentation guide](agent-specialization.md).
 
-## Multi-agent interaction
+## State, failures and persistence
 
-Research retrieves provenance-linked local evidence after normalized data and forecast are available. Technical and Fundamental then run as independent parallel branches. Their updates merge at a LangGraph join. Risk consumes both results and separates measured issuer/portfolio risk from data uncertainty. Manager owns bounded routing and can ask Technical to revisit a longer horizon. The loop is guarded by `max_iterations`.
+AgentState reducers merge branch messages, trace, reviews, reports, task executions,
+completed tasks and histories. Structured messages carry run/task correlation and
+input lineage. Specialist failures become typed partial/unavailable results;
+initial market data must be valid. Manager retains authoritative risk constraints.
 
-## Observe → Reason → Plan → Act mapping
+Graph checkpoints/pending writes use local SQLite; `resume_analysis(run_id)` resumes
+pending nodes of a compatible workflow. UI conversations also persist in SQLite.
+Neither mechanism guarantees exactly-once external I/O or full UI recovery.
+Deadlines are cooperative; supported transports receive clamped timeouts.
+See [reliability boundaries](multi-agent-reliability.md).
 
-| Stage | Concrete implementation |
-|---|---|
-| Observe | Read typed fields from `AgentState` |
-| Reason | Deterministic, auditable policy producing a short `reasoning_summary` |
-| Plan | Manager `current_plan` and conditional route; Technical tool selection |
-| Act | Call a tool/provider or emit an `AgentMessage` |
-| Observe again | Downstream node receives the merged updated state |
+## Evidence and model boundaries
 
-## Agent theory → code mapping
+Market data preserves source/as-of/fetch time, raw snapshots, checksum and quality.
+Research uses vector+FTS retrieval, period/freshness gates and citation-constrained
+synthesis. HTML and text-layer PDF extraction exist; scanned PDF needs OCR, which
+is not implemented. Crawler ingestion requires configured source/document policy;
+chat discovery alone does not grant full-text storage permission.
 
-| Agent theory concept | Implementation |
-|---|---|
-| Environment | Vietnamese stock-market/company data |
-| Observation | `MarketData`, `FinancialMetrics`, specialist results |
-| Sensor | `MarketDataProvider` through `MarketDataTool` |
-| Tool | Indicator and financial toolkit functions |
-| Goal | Agent role plus message `task` |
-| Reasoning | Agent scoring/selection policy and public summary |
-| Action | Provider/tool call, result, warning, critique, or re-analysis request |
-| Memory/state | `AgentState` |
-| Communication | `AgentMessage` |
-| Planning | Manager plan and LangGraph conditional routing |
-| Specialization | Six agent classes with explicit contracts and non-overlapping authority |
-| Conflict/criticism | Signal comparison and Risk veto |
-| Multi-agent system | Fan-out/join/cycle in `StockAgentGraph` |
+V2/V3/V4 forecast adapters exist; environment-aware loading and UI V2/V4 selection
+are distinct from bare `AnalysisService()` construction, which injects a baseline
+service by default. V4 demo blending is an explicit experimental exception, not
+promotion. Shared indicator toolkit serves analysis and charts. See
+[forecast policy](price-forecasting.md).
 
-## FPT conflict sequence
+## Evaluation limits
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant M as Manager
-    participant D as Data
-    participant T as Technical
-    participant F as Fundamental
-    participant R as Risk/Critic
-    User->>M: Analyze FPT, 3 months
-    M->>D: TASK acquire normalized data
-    D-->>M: RESULT OHLCV + financial metrics
-    par independent analysis
-        M->>T: TASK technical assessment
-        T->>T: RSI, MACD, SMA, volatility
-        T-->>M: RESULT BUY
-    and
-        M->>F: TASK fundamental assessment
-        F-->>M: RESULT HOLD
-    end
-    M->>R: TASK critique both results
-    R-->>M: CRITIQUE HIGH risk / veto
-    M->>M: Detect disagreement and high risk
-    M->>T: REQUEST_REANALYSIS with 1-year context
-    T->>T: Add SMA200, support, drawdown
-    T-->>M: RESULT revised assessment
-    M->>R: TASK critique revised evidence
-    R-->>M: CRITIQUE updated risk
-    M-->>User: FINAL_DECISION WATCH/HOLD + confidence + evidence
-```
-
-## Safety and failure behavior
-
-Real-data failures are surfaced clearly and never replaced with invented analysis. Missing metrics reduce confidence or yield `UNKNOWN`. Deterministic fixtures exist only in tests. Every loop is finite. Final output always carries an educational disclaimer and there is no trade execution action anywhere in the graph.
+Tests verify implementation contracts, not investment accuracy. The coordination
+benchmark compares a six-role single pass against bounded coordination and an
+evaluator-only no-Risk ablation; it does not compare one LLM agent against six.
+No broker/order execution is implemented. Live upstream availability, independent
+retrieval quality, confidence calibration and point-in-time investment performance
+require separate evidence.

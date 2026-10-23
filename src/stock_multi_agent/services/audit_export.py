@@ -27,6 +27,8 @@ _ALLOWED_METADATA = {
     'risk_level', 'risk_policy_version', 'risk_feature_contributions', 'issuer_risk_score',
     'issuer_risk_level', 'data_uncertainty_level', 'evidence_completeness', 'conflicts',
     'agent_reports', 'agent_evaluation', 'financial_comparability_limitations',
+    'analysis_run_id', 'workflow_version', 'analysis_status', 'risk_assessment_status',
+    'task_execution', 'task_plan_status', 'task_executions',
     'prompt_version', 'prompt_sha256', 'schema_version', 'schema_sha256',
 }
 _SOURCE_KEYS = {'provider', 'source_id', 'data_kind', 'fetched_at', 'as_of', 'source_url',

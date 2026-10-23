@@ -1,5 +1,7 @@
 # Nâng cấp Phase 0, 1, 2 — triển khai và kiểm chứng
 
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
 Tài liệu này ứng với **ba phase đầu tiên theo thứ tự trong comprehensive-free-upgrade-plan.md: 0 → 1 → 2**. Không phải Phase 1 → 2 → 3; Knowledge Graph V2 thuộc lượt sau.
 
 ## Trạng thái

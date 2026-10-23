@@ -14,6 +14,7 @@ from stock_multi_agent.services.content_extractor import HtmlContentExtractor
 from stock_multi_agent.services.reporting_period import infer_reporting_period
 from stock_multi_agent.services.research_planner import ResearchPlanner
 from stock_multi_agent.services.web_research import WebResearchError, WebResearchService
+from stock_multi_agent.services.request_telemetry import bounded_timeout, check_deadline
 
 
 class WebDiscovery(Protocol):
@@ -59,9 +60,12 @@ class ResearchOrchestrator:
         seen_urls: set[str] = set()
 
         for query in plan.queries[:plan.max_searches]:
+            check_deadline()
             try:
                 discovered = self.discovery.search(query.query, ticker=plan.ticker, limit=5)
+                check_deadline()
             except WebResearchError as exc:
+                check_deadline()
                 execution.failures.append(f"search: {exc}")
                 execution.trace.append({"phase": "SEARCH", "query": query.query, "outcome": "error"})
                 continue
@@ -76,17 +80,21 @@ class ResearchOrchestrator:
         bytes_used = 0
         seen_content: set[str] = set()
         for candidate in candidates[:plan.max_pages]:
+            check_deadline()
             remaining = plan.max_total_bytes - bytes_used
             if remaining <= 0:
                 execution.trace.append({"phase": "FETCH", "outcome": "budget_exhausted"})
                 break
             try:
                 fetched = self.fetcher.fetch(
-                    str(candidate.source_url), timeout_seconds=plan.timeout_seconds, max_bytes=remaining,
+                    str(candidate.source_url), timeout_seconds=bounded_timeout(plan.timeout_seconds), max_bytes=remaining,
                 )
+                check_deadline()
                 bytes_used += len(fetched.body.encode("utf-8"))
                 extracted = self.extractor.extract(fetched)
+                check_deadline()
             except (ContentFetchError, ValueError) as exc:
+                check_deadline()
                 execution.failures.append(f"fetch: {candidate.source_url}: {exc}")
                 execution.trace.append({"phase": "FETCH", "url": str(candidate.source_url), "outcome": "error"})
                 continue

@@ -1,5 +1,7 @@
 # Kiến trúc Dual Recommendation
 
+> Đối chiếu 23/10/2026: tài liệu mô tả implementation, tên file proposal là lịch sử. Default deep limit và quality guards đã cập nhật theo RecommendationService.
+
 ## Trạng thái
 
 Đã triển khai. Luồng này phục vụ nghiên cứu/giảng dạy và không đặt lệnh giao dịch.
@@ -61,15 +63,17 @@ Chính sách recommendation quick screen:
 - technical score tối thiểu: `5.0`;
 - signal hợp lệ: `BUY`, `HOLD`;
 - universe tối đa: `100`;
-- policy: `screen-v3-progressive`.
+- policy quick recommendation: `screen-v4-fast-recommendation` (generic discovery có policy riêng).
 
 ## Phase 2 — Deep analysis
 
-`RecommendationService` chạy full analysis cho các mã sống sót. Vòng đầu phân tích tối đa `max(10, requested_count * 2)`. Nếu chưa đủ K kết quả hợp lệ, phạm vi được mở rộng gấp đôi qua từng vòng cho đến khi đủ K, cạn danh sách đã qua quick screen, hoặc gặp rate limit. Các giới hạn đã dùng được ghi trong `deep_analysis_limits` để audit. Dịch vụ có thể dừng sớm khi đã có đủ kết quả hợp lệ và đã đại diện được hai bucket (khi yêu cầu từ hai mã trở lên).
+`RecommendationService` chạy full analysis cho các mã sống sót. Mặc định `deep_limit = requested_count`; caller có thể đặt `max_deep_analysis` lớn hơn trong giới hạn quick screen. Candidate queue được chặn theo deep limit; vòng mở rộng nội bộ không tự nâng default lên `max(10, K*2)`. Các giới hạn đã dùng được ghi trong `deep_analysis_limits` để audit. Dịch vụ có thể dừng sớm khi đã có đủ kết quả hợp lệ và đã đại diện được hai bucket (khi yêu cầu từ hai mã trở lên).
 
 Các kết quả lỗi hoặc thiếu dữ liệu không được âm thầm biến thành gợi ý; chúng tạo warning và có thể dẫn đến shortfall.
 
 ## Chính sách hai bucket
+
+Cả hai bucket yêu cầu Technical/Fundamental khác UNKNOWN, Risk khả dụng và confidence cả ba từ 0.5; không suy ra đủ điều kiện chỉ từ score. Tên bucket là nhãn heuristic, không phải lợi nhuận đã được đo.
 
 ### Lợi nhuận cao — rủi ro cao
 

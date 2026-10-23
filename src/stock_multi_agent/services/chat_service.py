@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from stock_multi_agent.chat.query_parser import QueryParser
 from stock_multi_agent.chat.response import ResponseComposer
-from stock_multi_agent.chat.router import IntentRouter, RoutingPlanValidator
+from stock_multi_agent.chat.router import IntentRouter, RouteStep, RoutingPlanValidator
 from stock_multi_agent.agents.manager_agent import ManagerResponseSynthesis, ManagerRouteSelection
 from stock_multi_agent.models.chat import (
     AssistantResponse,
@@ -209,33 +209,30 @@ class ChatService:
                 "parser_source": f"{query.parser_source}+manager_llm",
             })
         plan = self.router.plan(query, conversation)
-        validation_errors = RoutingPlanValidator.validate(plan, query)
+        validation_errors = RoutingPlanValidator.validate(plan, query, conversation)
+        execution = None
         if validation_errors:
             response = AssistantResponse(
                 message="Yêu cầu chưa thể được thực hiện an toàn. Bạn có thể diễn đạt lại yêu cầu.",
                 tickers=query.tickers,
                 warnings=["Routing plan validation failed: " + " ".join(validation_errors)],
             )
-        elif query.needs_clarification:
-            response = AssistantResponse(
-                message=query.clarification_question or "Bạn có thể nói rõ yêu cầu hơn không?",
-                tickers=query.tickers,
-            )
         else:
+            from stock_multi_agent.services.chat_plan_execution import ChatPlanExecution
+            execution = ChatPlanExecution(self, plan, query)
             try:
-                if plan.intent == QueryIntent.REPORT_EXPORT:
-                    previous = next((item.response for item in reversed(conversation.messages) if item.response), None)
-                    response = previous.model_copy(deep=True) if previous else AssistantResponse(message='Hãy phân tích hoặc tìm tài liệu trước, sau đó chọn tải báo cáo Markdown/HTML dưới câu trả lời.')
-                    response.metadata['export_ready'] = True
-                else:
-                    response = self._dispatch(query, plan.intent)
-                self._attach_secondary_outputs(response, query)
-                self.llm_analyst.enrich(response, query)
+                response = execution.execute(conversation)
+                if execution.can_enrich():
+                    self.llm_analyst.enrich(response, query)
             except (MarketDataError, ValueError) as exc:
                 from stock_multi_agent.services.audit_export import sanitize_text
-                response = self._friendly_error(query.tickers, sanitize_text(str(exc)))
+                response = execution.available_response() or self._friendly_error(query.tickers, sanitize_text(str(exc)))
+                if execution.executor.outputs:
+                    response.warnings.append("Task execution incomplete: " + sanitize_text(str(exc)))
+                if getattr(exc, "analysis_run_id", None):
+                    response.metadata.update(analysis_run_id=exc.analysis_run_id, analysis_status="FAILED")
             except Exception as exc:
-                response = AssistantResponse(
+                response = execution.available_response() or AssistantResponse(
                     message=(
                         "Data Agent hoặc dịch vụ phân tích đang tạm thời không phản hồi. "
                         "Bạn có thể thử lại sau hoặc kiểm tra kết nối dữ liệu."
@@ -243,8 +240,12 @@ class ChatService:
                     tickers=query.tickers,
                     warnings=[f"Dịch vụ không khả dụng ({type(exc).__name__}); không thay bằng dữ liệu giả."],
                 )
+                if execution.executor.outputs:
+                    response.warnings.append(f"Task execution incomplete ({type(exc).__name__}); giữ lại kết quả đã hoàn thành.")
+                if getattr(exc, "analysis_run_id", None):
+                    response.metadata.update(analysis_run_id=exc.analysis_run_id, analysis_status="FAILED")
 
-        if response.response_type in {
+        if execution and RouteStep.MANAGER in plan.steps and execution.can_enrich() and response.response_type in {
             ResponseType.ANALYSIS,
             ResponseType.COMPARISON,
             ResponseType.MARKET_OVERVIEW,
@@ -266,13 +267,24 @@ class ChatService:
                 )
             response.message += "\n".join(section)
 
-        self._attach_data_source_citations(response)
+        from stock_multi_agent.services.request_telemetry import remaining_seconds
+        remaining = remaining_seconds()
+        discover_source_links = bool(execution and execution.executor.outputs and not validation_errors
+            and (remaining is None or remaining > 0) and any(
+                "discover_source_citation_links" in task.nested_operations for task in plan.tasks))
+        self._attach_data_source_citations(response, discover_source_links=discover_source_links)
 
         if plan.steps:
             response.metadata["routing_plan"] = [step.value for step in plan.steps]
             response.metadata["parsed_intent"] = query.intent.value
             response.metadata["task_plan"] = [task.model_dump(mode="json") for task in plan.tasks]
             response.metadata["task_plan_budget_units"] = plan.total_budget_units
+            response.metadata["task_execution"] = execution.executor.snapshot() if execution else [
+                {"task_id": task.id, "step": task.step.value, "status": "REJECTED",
+                    "produced_outputs": [], "missing_outputs": task.expected_outputs} for task in plan.tasks]
+            response.metadata["task_plan_status"] = (
+                "REJECTED" if validation_errors else
+                "COMPLETED" if all(item["status"] == "COMPLETED" for item in response.metadata["task_execution"]) else "PARTIAL")
         response.metadata["semantic_understanding"] = {
             "input": query.raw_query,
             "normalized": query.normalized_query,
@@ -307,7 +319,7 @@ class ChatService:
         self._update_conversation(conversation, user_message, query, plan.intent, response)
         return response
 
-    def _attach_data_source_citations(self, response: AssistantResponse) -> None:
+    def _attach_data_source_citations(self, response: AssistantResponse, *, discover_source_links: bool = False) -> None:
         """Render exact provenance and use Brave only to discover missing links.
 
         A discovered page is deliberately labelled as a fallback link instead
@@ -336,7 +348,7 @@ class ChatService:
                 )
                 missing_refs.append(ref)
 
-        fallback_links = self._discover_missing_data_source_links(response, missing_refs)
+        fallback_links = self._discover_missing_data_source_links(response, missing_refs) if discover_source_links else []
         response.metadata["data_source_citations"] = {
             "exact_source_count": sum(1 for ref in response.source_details if ref.source_url),
             "missing_source_url_count": len(missing_refs),
@@ -357,6 +369,8 @@ class ChatService:
         elif missing_refs:
             sections.append(
                 "\nKhông tìm được liên kết Brave đủ điều kiện; hệ thống giữ nguyên source_id và timestamp, không tự tạo URL."
+                if discover_source_links else
+                "\nHệ thống giữ nguyên source_id và timestamp; không tự tạo URL khi nguồn không trả liên kết."
             )
 
         research_citations = response.metadata.get("research_citations", [])
@@ -427,94 +441,49 @@ class ChatService:
                 return candidate
         return None
 
-    def _dispatch(self, query, resolved_intent: QueryIntent) -> AssistantResponse:
-        if query.as_of and resolved_intent not in {
-            QueryIntent.RESEARCH, QueryIntent.DOCUMENT_QA, QueryIntent.SOURCE_REQUEST, QueryIntent.THESIS_REVIEW,
-            QueryIntent.THEORY, QueryIntent.CURRENT_RULE, QueryIntent.HELP,
-        }:
-            return AssistantResponse(message=(
-                f"Yêu cầu phân tích tại ngày {query.as_of.isoformat()} cần dữ liệu point-in-time. "
-                "Luồng chat hiện hỗ trợ lọc ngày cho tài liệu; bạn có thể hỏi báo cáo được công bố trước ngày này."
-            ), metadata={"status": "UNSUPPORTED_POINT_IN_TIME", "as_of": query.as_of.isoformat()})
+    def _dispatch_composite(self, query, resolved_intent: QueryIntent) -> AssistantResponse:
+        """Only fixed local/batch contracts call this from ChatPlanExecution.
+
+        Market-data and specialist requests execute approved task handlers.
+        """
         if resolved_intent == QueryIntent.HELP:
             return self._help_response()
         if resolved_intent == QueryIntent.GENERAL_CHAT:
-            return AssistantResponse(
-                message=(
-                    "Mình là trợ lý Multi-Agent chuyên phân tích chứng khoán Việt Nam. "
-                    "Bạn có thể yêu cầu phân tích một mã, xem RSI/MACD, vẽ biểu đồ, so sánh mã, "
-                    "xem tổng quan thị trường, sàng lọc watchlist hoặc hỏi kiến thức chứng khoán có nguồn."
-                )
-            )
+            return AssistantResponse(message=(
+                "Mình là trợ lý Multi-Agent chuyên phân tích chứng khoán Việt Nam. "
+                "Bạn có thể yêu cầu phân tích một mã, xem RSI/MACD, vẽ biểu đồ, so sánh mã, "
+                "xem tổng quan thị trường, sàng lọc watchlist hoặc hỏi kiến thức chứng khoán có nguồn."
+            ))
         if resolved_intent == QueryIntent.UNKNOWN:
             return AssistantResponse(message=query.clarification_question or "Bạn có thể nói rõ yêu cầu hơn không?")
-        if resolved_intent == QueryIntent.EXPLANATION:
-            if query.tickers:
-                state = self.analysis.analyze(query.tickers[0], query.investment_horizon)
-                response = ResponseComposer.full_analysis(state)
-                self._attach_specialist_llm_reviews(response, state)
-                return response
+        if resolved_intent == QueryIntent.EXPLANATION and not query.tickers:
             return self._explain(query)
-        if resolved_intent == QueryIntent.THEORY:
-            return self.knowledge.answer(query.raw_query)
-        if resolved_intent == QueryIntent.CURRENT_RULE:
-            return self.knowledge.answer(query.raw_query, current_rule=True)
-        if resolved_intent == QueryIntent.MIXED:
-            return self._mixed_knowledge_analysis(query)
         if resolved_intent in {QueryIntent.EVENT_IMPACT, QueryIntent.REPORT_CHANGE, QueryIntent.SCENARIO_ANALYSIS,
-                QueryIntent.CHANGE_EXPLANATION, QueryIntent.PORTFOLIO_RISK, QueryIntent.PEER_COMPARISON}:
+            QueryIntent.CHANGE_EXPLANATION, QueryIntent.PORTFOLIO_RISK, QueryIntent.PEER_COMPARISON}:
             return self._workbench_query(query, resolved_intent)
         if resolved_intent == QueryIntent.THESIS_REVIEW:
             response = self._research(query)
-            if not query.tickers:
-                return response
-            bundle = response.metadata.get('evidence_bundle', {})
-            record = self.workbench.track_thesis(query.tickers[0], query.raw_query, bundle.get('citations', []))
-            response.metadata['thesis'] = record
-            response.message += f'\n\nLuận điểm được lưu để theo dõi: `{record["thesis_id"]}` · {record["status"]}. Chưa tự xác nhận luận điểm chỉ vì có tài liệu liên quan.'
+            if query.tickers:
+                bundle = response.metadata.get('evidence_bundle', {})
+                record = self.workbench.track_thesis(query.tickers[0], query.raw_query, bundle.get('citations', []))
+                response.metadata['thesis'] = record
+                response.message += f'\n\nLuận điểm được lưu để theo dõi: `{record["thesis_id"]}` · {record["status"]}. Chưa tự xác nhận luận điểm chỉ vì có tài liệu liên quan.'
             return response
-        if resolved_intent in {QueryIntent.RESEARCH, QueryIntent.DOCUMENT_QA, QueryIntent.SOURCE_REQUEST}:
-            return self._research(query)
-        if resolved_intent == QueryIntent.FORECAST:
-            if not query.tickers:
-                return AssistantResponse(message="Bạn muốn dự báo mã cổ phiếu nào?")
-            state = self.analysis.fetch_data(query.tickers[0], query.investment_horizon, include_forecast=True)
-            return AssistantResponse(message=ResponseComposer._forecast_summary(state), tickers=query.tickers,
-                sources=ResponseComposer._sources(state), source_details=ResponseComposer._source_details(state),
-                data_timestamp=state.market_data.as_of if state.market_data else None,
-                data_fetched_at=state.market_data.fetched_at if state.market_data else None,
-                agent_trace=state.trace, metadata={"price_forecast": ResponseComposer._forecast_metadata(state)})
-        if resolved_intent == QueryIntent.MARKET_OVERVIEW:
-            return self._market_overview(query.investment_horizon)
         if resolved_intent == QueryIntent.STOCK_DISCOVERY:
-            return self._screen(
-                query.sector,
-                query.investment_horizon,
-                requested_count=query.requested_result_count,
-                requested_actions=query.requested_actions,
-                filters=query.filters, exchange=query.exchange,
-            )
+            return self._screen(query.sector, query.investment_horizon,
+                requested_count=query.requested_result_count, requested_actions=query.requested_actions,
+                filters=query.filters, exchange=query.exchange)
         if resolved_intent == QueryIntent.STOCK_RECOMMENDATION:
             if query.filters or query.exchange:
                 return self._screen(query.sector, query.investment_horizon, query.requested_result_count or 6,
                     query.requested_actions, filters=query.filters, exchange=query.exchange)
-            return self._recommend(
-                query.sector,
-                query.investment_horizon,
-                requested_count=query.requested_result_count or 6,
-            )
-        if resolved_intent == QueryIntent.STOCK_COMPARISON:
-            if len(query.tickers) < 2:
-                raise ValueError("Cần ít nhất hai mã để so sánh.")
-            if len(query.tickers) > 5:
-                return AssistantResponse(message='Mỗi lần so sánh tối đa 5 mã; hãy chọn 2–5 mã để giữ ngân sách truy xuất.', tickers=query.tickers)
-            return self._compare(query.tickers, query.investment_horizon)
-        if not query.tickers:
-            raise ValueError("Tôi chưa xác định được mã cổ phiếu. Bạn có thể nêu mã, ví dụ FPT hoặc VNM.")
-        ticker = query.tickers[0]
-        if resolved_intent == QueryIntent.STOCK_ANALYSIS:
-            state = self.analysis.analyze(ticker, query.investment_horizon)
-            response = ResponseComposer.full_analysis(state)
+            return self._recommend(query.sector, query.investment_horizon,
+                requested_count=query.requested_result_count or 6)
+        raise ValueError(f"{resolved_intent.value} requires its approved task handlers.")
+
+    def _full_analysis_response(self, query, state, *, capture=True):
+        response = ResponseComposer.full_analysis(state)
+        if capture and state.market_data is not None:
             brief = self.workbench.capture(state)
             response.metadata['research_brief'] = brief
             events = self.workbench.event_impact(state.market_data)
@@ -522,37 +491,8 @@ class ChatService:
                 response.tables.append(ResponseTable(title='Sự kiện và tác động có điều kiện', columns=list(events[0]), rows=events))
             response.message += f'\n\nSnapshot nghiên cứu: `{brief["snapshot_id"]}` · dữ liệu đến {brief["as_of"]}. '
             response.message += 'Chưa ghi nhận sự kiện có nguồn.' if not events else 'Tác động sự kiện chưa được định lượng.'
-            self._attach_specialist_llm_reviews(response, state)
-            return response
-        if resolved_intent == QueryIntent.TECHNICAL_ANALYSIS:
-            state = self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
-            response = ResponseComposer.technical(state)
-            self._attach_specialist_llm_reviews(response, state, {"technical"})
-            return response
-        if resolved_intent == QueryIntent.FUNDAMENTAL_ANALYSIS:
-            state = self.analysis.analyze_fundamental(ticker, query.investment_horizon)
-            response = ResponseComposer.fundamental(state)
-            self._attach_specialist_llm_reviews(response, state, {"fundamental"})
-            return response
-        if resolved_intent == QueryIntent.INDICATOR_QUERY:
-            fundamental = {"PE", "PB", "ROE", "ROA", "EPS"}
-            if fundamental.intersection(query.requested_indicators):
-                state = self.analysis.analyze_fundamental(ticker, query.investment_horizon)
-                response = ResponseComposer.fundamental(state)
-                self._attach_specialist_llm_reviews(response, state, {"fundamental"})
-                return response
-            state = self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
-            response = ResponseComposer.technical(state)
-            self._attach_specialist_llm_reviews(response, state, {"technical"})
-            return response
-        if resolved_intent == QueryIntent.RISK_ANALYSIS:
-            state = self.analysis.analyze_risk(ticker, query.investment_horizon)
-            response = ResponseComposer.risk(state)
-            self._attach_specialist_llm_reviews(response, state, {"risk"})
-            return response
-        if resolved_intent == QueryIntent.STOCK_CHART:
-            return self._chart(query)
-        return self._help_response()
+        self._attach_specialist_llm_reviews(response, state)
+        return response
 
     def _workbench_query(self, query, intent):
         if not query.tickers:
@@ -675,31 +615,6 @@ class ChatService:
         else:
             sections.append("\nLLM chỉ diễn giải evidence; điểm số, forecast và quyết định vẫn do pipeline deterministic kiểm soát.")
         response.message += "\n".join(sections)
-
-    def _mixed_knowledge_analysis(self, query: ParsedQuery) -> AssistantResponse:
-        if not query.tickers:
-            raise ValueError("Cần mã cổ phiếu để áp dụng kiến thức vào dữ liệu thực.")
-        response = self.knowledge.answer(query.raw_query)
-        ticker = query.tickers[0]
-        fundamental = {"PE", "PB", "ROE", "ROA", "EPS"}
-        if fundamental.intersection(query.requested_indicators) or any(
-            item in query.normalized_query for item in ("dinh gia", "dcf", "ev ebitda", "bien loi nhuan")
-        ):
-            applied = ResponseComposer.fundamental(
-                self.analysis.analyze_fundamental(ticker, query.investment_horizon)
-            )
-            component = "fundamental"
-        else:
-            applied = ResponseComposer.technical(
-                self.analysis.analyze_technical(ticker, query.investment_horizon, query.requested_indicators)
-            )
-            component = "technical"
-        applied.message = f"### Áp dụng vào dữ liệu thật · {ticker}\n\n{applied.message}"
-        self._merge_secondary_response(response, applied, component)
-        response.tickers = [ticker]
-        response.metadata["mixed_components"] = ["knowledge", component]
-        response.metadata["knowledge_does_not_control_recommendation"] = True
-        return response
 
     def _research(self, query: ParsedQuery) -> AssistantResponse:
         ticker = query.tickers[0] if query.tickers else None
@@ -854,7 +769,7 @@ class ChatService:
             },
         )
 
-    def _chart(self, query) -> AssistantResponse:
+    def _chart(self, query, *, states: dict[str, AgentState] | None = None) -> AssistantResponse:
         artifacts = []
         trace = [TraceEvent(
             agent=AgentName.MANAGER,
@@ -871,8 +786,13 @@ class ChatService:
         missing = []
         for ticker in query.tickers[:4]:
             requests = self.charts.requests_from_query(query, ticker)
-            state = self.analysis.fetch_data(ticker, query.investment_horizon,
-                include_financials=any(request.chart_type in FINANCIAL_TYPES for request in requests), include_forecast=False)
+            if states is not None:
+                if ticker not in states:
+                    raise ValueError(f"Approved DATA task did not produce chart data for {ticker}.")
+                state = states[ticker]
+            else:
+                state = self.analysis.fetch_data(ticker, query.investment_horizon,
+                    include_financials=any(request.chart_type in FINANCIAL_TYPES for request in requests), include_forecast=False)
             if state.market_data is None:
                 raise ValueError("Data Agent không trả về dữ liệu giá.")
             for request in requests:
@@ -909,28 +829,6 @@ class ChatService:
             warnings=list(dict.fromkeys(warnings)), data_timestamp=newest, data_fetched_at=newest_fetch,
             metadata={'unavailable_charts': missing},
         )
-
-    def _attach_secondary_outputs(self, response: AssistantResponse, query: ParsedQuery) -> None:
-        if query.as_of:
-            return
-        if QueryIntent.RESEARCH in query.secondary_intents:
-            self._merge_secondary_response(response, self._research(query), "research")
-        if QueryIntent.TECHNICAL_ANALYSIS in query.secondary_intents and query.tickers and "technical_score" not in response.metadata:
-            technical = self.analysis.analyze_technical(query.tickers[0], query.investment_horizon, query.requested_indicators)
-            self._merge_secondary_response(response, ResponseComposer.technical(technical), "technical")
-        if QueryIntent.STOCK_CHART in query.secondary_intents and query.tickers:
-            chart_response = self._chart(query)
-            self._merge_secondary_response(response, chart_response, "chart")
-        if QueryIntent.FUNDAMENTAL_ANALYSIS in query.secondary_intents and query.tickers and "fundamental_score" not in response.metadata:
-            fundamental_response = ResponseComposer.fundamental(
-                self.analysis.analyze_fundamental(query.tickers[0], query.investment_horizon)
-            )
-            self._merge_secondary_response(response, fundamental_response, "fundamental")
-        if QueryIntent.RISK_ANALYSIS in query.secondary_intents and query.tickers and "risk_score" not in response.metadata:
-            risk_response = ResponseComposer.risk(
-                self.analysis.analyze_risk(query.tickers[0], query.investment_horizon)
-            )
-            self._merge_secondary_response(response, risk_response, "risk")
 
     def _merge_secondary_response(
         self,
@@ -974,8 +872,8 @@ class ChatService:
             tickers=query.tickers,
         )
 
-    def _market_overview(self, horizon: str) -> AssistantResponse:
-        state = self.analysis.fetch_data("VNINDEX", horizon, include_financials=False)
+    def _market_overview(self, horizon: str, *, state: AgentState | None = None) -> AssistantResponse:
+        state = state or self.analysis.fetch_data("VNINDEX", horizon, include_financials=False)
         if state.market_data is None:
             raise ValueError("Không có dữ liệu VN-Index.")
         bars = state.market_data.bars
@@ -1309,7 +1207,7 @@ class ChatService:
             warnings=warnings, data_timestamp=newest, data_fetched_at=newest_fetch,
         )
 
-    def _compare(self, tickers: list[str], horizon: str) -> AssistantResponse:
+    def _compare(self, tickers: list[str], horizon: str, *, states_out: list[AgentState] | None = None) -> AssistantResponse:
         spec = ComparisonSpec(tickers=tickers)
         rows: list[dict[str, object]] = []
         compared_states = []
@@ -1330,12 +1228,15 @@ class ChatService:
                     "Ticker": ticker,
                     "Technical": f"{state.technical_result.signal.value} ({state.technical_result.score:.1f})",
                     "Fundamental": f"{state.fundamental_result.signal.value} ({state.fundamental_result.score:.1f})",
-                    "Risk": f"{state.risk_result.risk_level.value} ({state.risk_result.risk_score:.1f})",
+                    "Risk": (f"{state.risk_result.risk_level.value} ({state.risk_result.risk_score:.1f})"
+                        if state.risk_result.assessment_status == "ASSESSED" else "UNKNOWN (risk assessment unavailable)"),
                     "Recommendation": state.final_decision.recommendation.value,
                     "Price as of": state.market_data.as_of.isoformat() if state.market_data.as_of else "unavailable",
                     "Financial period": self._latest_financial_period(state),
                 })
                 compared_states.append(state)
+                if states_out is not None:
+                    states_out.append(state)
                 traces.extend(state.trace)
                 sources.append(state.market_data.source)
                 source_details.extend(state.market_data.source_refs)

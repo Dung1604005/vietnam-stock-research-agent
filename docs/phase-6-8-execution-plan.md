@@ -2,7 +2,7 @@
 
 Ngày lập: 17/10/2026. Cập nhật 18/10/2026: **CODE_IMPLEMENTED — GPU_TRAINING / HUMAN_REVIEW / MODEL_GATE_PENDING**.
 
-Đã triển khai các nền tảng Phase 6–8, giữ V2; dataset V3 riêng đã được tạo. Notebook fine-tune dùng **`Qwen/Qwen3-4B-Instruct-2507`** theo lựa chọn mới của người dùng. Hướng dẫn và bằng chứng kiểm thử: [phase-6-8-implementation.md](phase-6-8-implementation.md). Phần “hiện trạng làm cơ sở” bên dưới là khảo sát trước triển khai, không mô tả trạng thái mới. Chưa có training GPU hoặc adapter/model mới được promote.
+Đã triển khai các nền tảng Phase 6–8, giữ V2; dataset V3 riêng đã được tạo. Notebook fine-tune dùng **`Qwen/Qwen3-4B-Instruct-2507`** theo lựa chọn mới của người dùng. Hướng dẫn và bằng chứng kiểm thử: [phase-6-8-implementation.md](phase-6-8-implementation.md). Phần “hiện trạng làm cơ sở” bên dưới là khảo sát trước triển khai, không mô tả trạng thái mới. Mốc kế hoạch ban đầu chưa có GPU run; về sau đã có review artifact LSTM V3/V4, chưa promote V3; Qwen adapter còn gate riêng. Xem model card/review hiện hành thay vì coi phần khảo sát ban đầu là trạng thái hôm nay.
 
 Kế hoạch được tổng hợp sau khi ba subagent ChatGPT trong phiên làm việc khảo sát độc lập các nhánh ML, LLM fine-tuning và UX/vận hành. Đây là phân công trợ lý phát triển, **không phải thêm ba agent vào ứng dụng chứng khoán**.
 

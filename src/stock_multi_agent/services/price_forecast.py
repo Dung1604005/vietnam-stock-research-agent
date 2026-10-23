@@ -36,12 +36,15 @@ class PriceForecastService:
 
     @classmethod
     def from_environment(cls, default_enabled: bool = False, *, model_version: str | None = None,
-                         experimental_blend: bool = False) -> "PriceForecastService":
+                         experimental_blend: bool = False, defer_load: bool = False) -> "PriceForecastService":
         """Load the selected local artifact; V4 demo blend requires explicit opt-in.
 
         UI selection is session-local, never a process-wide environment change.
         Missing/invalid models use an unscored, clearly labelled baseline.
         """
+        if defer_load:
+            return DeferredPriceForecastService(default_enabled=default_enabled, model_version=model_version,
+                                                 experimental_blend=experimental_blend)
         configured = os.getenv("STOCK_AGENT_LSTM_ENABLED")
         enabled = default_enabled if configured is None else configured.strip().lower() not in {
             "0", "false", "off", "no",
@@ -160,3 +163,34 @@ class PriceForecastService:
             confidence=0.0,
             warnings=warnings,
         )
+
+
+class DeferredPriceForecastService:
+    """Keep model imports off the UI startup path; load only for a forecast."""
+
+    def __init__(self, **configuration):
+        from threading import RLock
+        self.configuration = configuration
+        self._service = None
+        self._lock = RLock()
+
+    @property
+    def load_warning(self):
+        return self._service.load_warning if self._service else None
+
+    @property
+    def trained_model(self):
+        return self._service.trained_model if self._service else None
+
+    def forecast_next_session(self, market_data):
+        from stock_multi_agent.services.execution_profiles import current_profile
+        from stock_multi_agent.services.request_telemetry import check_deadline
+        check_deadline()
+        if current_profile().mode.value in {'QUICK', 'OFFLINE'}:
+            return PriceForecastService().forecast_next_session(market_data)
+        with self._lock:
+            check_deadline()
+            if self._service is None:
+                self._service = PriceForecastService.from_environment(**self.configuration)
+        check_deadline()
+        return self._service.forecast_next_session(market_data)

@@ -21,7 +21,10 @@ def isolated_runtime_root():
 def isolate_test_runtime(monkeypatch, isolated_runtime_root):
     # ChatService now persists snapshots. Tests must never write fixture prices
     # into the user's default research/snapshot ledger.
-    monkeypatch.setenv('STOCK_AGENT_RUNTIME_DIR', str(isolated_runtime_root))
+    # Durable conversations/checkpoints must not leak between unrelated tests.
+    case_runtime = isolated_runtime_root / f'case-{uuid4().hex}'
+    case_runtime.mkdir()
+    monkeypatch.setenv('STOCK_AGENT_RUNTIME_DIR', str(case_runtime))
 
 
 def conflict_market_data(ticker: str = "FPT") -> MarketData:

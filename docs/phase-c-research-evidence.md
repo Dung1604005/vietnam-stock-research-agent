@@ -1,5 +1,7 @@
 # Phase C — Research, Retrieval & Evidence
 
+> Đối chiếu code 23/10/2026: đã bổ sung PDF có text layer, version/supersedes, crawler/source policy. Bảng corpus và checksum bên dưới là mốc ingest được ghi trước đây, không phải kiểm kê corpus live mới. Xem [crawler](automatic-research-crawler-implementation.md) và [báo cáo hiện trạng](project-report.md).
+
 ## Trạng thái
 
 Foundation đã triển khai theo hướng citation-first. Local research hiện chạy RAG hoàn chỉnh: question embedding → cosine vector similarity → hybrid merge với SQLite FTS5 → top-k chunk → structured LLM synthesis có citation validation. Local miss vẫn chạy research vertical slice có giới hạn: plan → source discovery → fetch HTML an toàn → extract → evidence selection. Vector được lưu ngay trong SQLite nên chưa cần một vector database riêng.
@@ -20,7 +22,7 @@ Mỗi document bắt buộc có:
 
 ## Ingestion và retrieval
 
-Hiện hỗ trợ UTF-8 `.txt`, `.md`, `.html`, `.htm`. HTML được bỏ tag/script/style trước khi chunk. PDF/OCR chưa được hỗ trợ vì chưa cài parser và không được giả rằng file PDF đã đọc được.
+Hiện hỗ trợ UTF-8 `.txt`, `.md`, `.html`, `.htm` và PDF có text layer qua optional `pypdf` (`.[knowledge]`). HTML được bỏ tag/script/style trước khi chunk. ContentFetcher/HtmlContentExtractor cũng xử lý PDF external; PDF scan thiếu text layer cần OCR, chưa triển khai. Không coi một PDF tìm thấy nhưng chưa trích xuất thành công là evidence.
 
 Ingest một tài liệu đã được phép dùng:
 
@@ -55,11 +57,11 @@ Chat query có các dấu hiệu như “báo cáo”, “công bố thông tin�
 
 `ChatService` luôn gọi `ResearchStore` trước. Local result có chunk quote, publisher, `published_at`, local `retrieved_at` và checksum nên được hiển thị là **Verified local citations**. Local FTS có một số alias deterministic Việt–Anh cho báo cáo/công bố/nghị quyết để document English vẫn được tìm bằng câu hỏi Việt. Nếu không có local result và có ticker, `WebResearchService` thử trang hồ sơ/công bố chính thức HNX theo mã; đây tránh lỗi mã ngắn như `PNG` bị search engine hiểu là định dạng ảnh. Kết quả HNX không chặn các nguồn bổ sung: service vẫn chạy chuỗi web miễn phí để tìm tin tức, IR và bối cảnh ngành, rồi gộp/deduplicate theo URL. Khi không có hồ sơ HNX, service lấy tên doanh nghiệp từ VCI/vnstock để khử mơ hồ. Truy vấn luôn giữ nguyên chủ đề người dùng nêu (ví dụ hoạt động, mở rộng, rủi ro), thay vì biến mọi câu hỏi thành một truy vấn mã cổ phiếu chung. Web discovery hiển thị **Live web results (not verified evidence)** gồm URL đích, domain, search provider, snippet và UTC `retrieved_at`.
 
-Web result không có `published_at`, không được ghi vào SQLite, không được dùng để tạo claim/tóm tắt và không thay thế tài liệu đã xác minh. Người dùng cần mở URL, kiểm tra quyền dùng/source/timestamp, sau đó ingest tài liệu primary đã duyệt nếu muốn nó trở thành evidence offline. Điều này ngăn timestamp của lúc tìm kiếm bị nhầm thành ngày công bố.
+Discovery result chưa fetch không chứng minh `published_at`, không được dùng như body evidence hoặc thay thế tài liệu đã xác minh. Chat có thể enqueue metadata URL vào thư viện crawler khi khớp source/path policy; điều đó không ingest snippet hoặc tự cấp quyền full-text. Body sau khi fetch/extract thành công có thể tạo external evidence. Muốn thành corpus offline cần đi qua policy/metadata/ingestion gate; không lấy thời điểm tìm kiếm làm ngày công bố.
 
 ### External evidence vertical slice
 
-Khi web discovery trả URL, `ResearchOrchestrator` có thể fetch tối đa số trang đã cấu hình trong một request. `SafeContentFetcher` chỉ cho HTTPS public host, chặn URL có credentials/local/private IP, kiểm tra từng redirect, giới hạn byte và timeout, rồi chỉ nhận HTML/XHTML. `HtmlContentExtractor` bỏ script/style/navigation/form, lấy title, canonical URL, ISO publication time nếu source cung cấp timezone, text và SHA-256.
+Khi web discovery trả URL, `ResearchOrchestrator` có thể fetch tối đa số trang đã cấu hình trong một request. `SafeContentFetcher` chỉ cho HTTPS public host, chặn URL có credentials/local/private IP, kiểm tra từng redirect, giới hạn byte và timeout, nhận HTML/XHTML/PDF. `HtmlContentExtractor` bỏ script/style/navigation/form, lấy title, canonical URL, ISO publication time nếu source cung cấp timezone, text và SHA-256; nhánh PDF dùng optional pypdf và từ chối scan không có text layer.
 
 Evidence external có quote từ **body đã fetch**, canonical URL, retrieval time, publication time nếu có, hash, source domain và relevance score. Nó được hiển thị là **Extracted external evidence** và chỉ sống trong response metadata; không tự động được ghi vào `research.sqlite3` hay mang nhãn verified local. Nếu fetch/extract thất bại, UI hạ xuống **Live web results (not verified evidence)** hoặc abstain.
 
@@ -106,7 +108,7 @@ Hai trang HTML trên website Báo cáo thường niên 2022 chính thức của 
 
 ## Giới hạn còn mở
 
-- Production-grade credentialed search provider/failover, source allowlist, robust main-content extraction, source-quality score, retention cache và freshness SLA chưa có.
-- Chưa có PDF parsing, OCR, table extraction hoặc document version/revision workflow đầy đủ.
+- Đã có search adapter/fallback, bounded extraction, source domain/path policy trong crawler và cache giới hạn; production SLA, source-quality calibration và live provider coverage chưa được chứng minh.
+- Đã có text-layer PDF parsing và document version/supersedes khi cùng URL thay nội dung. Chưa có OCR hoặc table extraction/revision reconciliation toàn diện.
 - Embedding mặc định `local_hash` là baseline offline, không có hiểu biết ngữ nghĩa sâu như model neural; có thể chuyển sang Ollama `nomic-embed-text` và re-index.
 - Đã có LLM claim synthesis với source-ID validation, nhưng chưa có multi-iteration recovery, cross-source contradiction engine hoặc benchmark faithfulness đủ lớn.

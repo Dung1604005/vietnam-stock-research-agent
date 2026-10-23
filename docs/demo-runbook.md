@@ -73,6 +73,6 @@ Test fixture/regression kiểm tra engineering, không chứng minh độ chính
 | --- | --- | --- |
 | Profile, replay checksum, nguồn/ngày/đơn vị, export/privacy, progress | Test engineering offline | Tốc độ máy người dùng |
 | Local health | Test 20 lần render: 0 kết nối ngoài | Uptime provider/Colab |
-| Fine-tuned LLM/LSTM V3 | Có pipeline/notebook và gate riêng | Chưa train/A-B/đạt gate chỉ vì app chạy |
+| Fine-tuned LLM / LSTM | Có pipeline/notebook, adapter và review artifact V3/V4 lịch sử | Chưa chứng minh adapter promotion, forward performance hoặc đạt gate chỉ vì app chạy |
 
 Giữ V2 và base model làm rollback cho đến khi artifacts mới vượt gate. Không sửa `.env` hoặc quảng bá adapter được duyệt chỉ vì training loss giảm.

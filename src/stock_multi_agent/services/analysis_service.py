@@ -77,9 +77,34 @@ class AnalysisService:
             force_data_refresh=force_refresh,
         )
         result = self.graph.invoke(initial)
-        if result.market_data is not None and result.price_forecast is None:
-            result.price_forecast = self.price_forecast_service.forecast_next_session(result.market_data)
         return result
+
+    def resume_analysis(self, run_id: str) -> AgentState:
+        return self.graph.resume(run_id)
+
+    def create_state(self, ticker: str, investment_horizon: str = '3 months', **kwargs) -> AgentState:
+        return self._initial_state(self._validate_ticker(ticker), investment_horizon, **kwargs)
+
+    @staticmethod
+    def merge_update(state: AgentState, update: dict[str, object]) -> AgentState:
+        return AnalysisService._merge(state, update)
+
+    def run_stage(self, state: AgentState, stage: str, **kwargs) -> AgentState:
+        """Public typed stage API shared by graph-backed and selective routes."""
+        from stock_multi_agent.services.agent_execution import execute_agent, execution_for_state
+        with execution_for_state(state):
+            if stage == 'forecast':
+                update = execute_agent(state, self.data_agent, stage, self.graph._forecast,
+                                       allowed_outputs={'price_forecast'})
+            else:
+                agent = {'data': self.data_agent, 'research': self.research_agent,
+                         'technical': self.technical_agent, 'fundamental': self.fundamental_agent,
+                         'risk': self.risk_agent}.get(stage)
+                if agent is None:
+                    raise ValueError('Unsupported analysis stage')
+                update = execute_agent(state, agent, stage, lambda value: agent.run(value, **kwargs),
+                                       essential=stage == 'data' and state.market_data is None)
+        return self._merge(state, update)
 
     def fetch_data(
         self,
@@ -98,9 +123,9 @@ class AnalysisService:
             investment_horizon,
             required_data=required_data,
         )
-        result = self._merge(state, self.data_agent.run(state, refresh=force_refresh))
+        result = self.run_stage(state, 'data', refresh=force_refresh)
         if result.market_data is not None and include_forecast:
-            result.price_forecast = self.price_forecast_service.forecast_next_session(result.market_data)
+            result = self.run_stage(result, 'forecast')
         return result
 
     def analyze_technical(
@@ -118,22 +143,19 @@ class AnalysisService:
             include_forecast=include_forecast, force_refresh=force_refresh,
         )
         state.requested_indicators = requested_indicators or []
-        return self._merge(
-            state,
-            self.technical_agent.run(state, allow_llm_planning=allow_llm_planning),
-        )
+        return self.run_stage(state, 'technical', allow_llm_planning=allow_llm_planning)
 
     def analyze_fundamental(self, ticker: str, investment_horizon: str = "3 months") -> AgentState:
         state = self.fetch_data(ticker, investment_horizon, include_financials=True)
-        state = self._merge(state, self.research_agent.run(state))
-        return self._merge(state, self.fundamental_agent.run(state))
+        state = self.run_stage(state, 'research')
+        return self.run_stage(state, 'fundamental')
 
     def analyze_risk(self, ticker: str, investment_horizon: str = "3 months") -> AgentState:
         state = self.fetch_data(ticker, investment_horizon, include_financials=True, include_benchmark=True)
-        state = self._merge(state, self.research_agent.run(state))
-        state = self._merge(state, self.technical_agent.run(state))
-        state = self._merge(state, self.fundamental_agent.run(state))
-        return self._merge(state, self.risk_agent.run(state))
+        state = self.run_stage(state, 'research')
+        state = self.run_stage(state, 'technical')
+        state = self.run_stage(state, 'fundamental')
+        return self.run_stage(state, 'risk')
 
     def _initial_state(
         self,
@@ -145,8 +167,12 @@ class AnalysisService:
         allow_llm_planning: bool = True,
         force_data_refresh: bool = False,
     ) -> AgentState:
-        from stock_multi_agent.services.execution_profiles import current_profile
-        if current_profile().mode.value in {'QUICK', 'OFFLINE'}:
+        from stock_multi_agent.models.research_contracts import RequestBudget
+        from stock_multi_agent.services.execution_profiles import constrain_budget, current_profile
+        if not investment_horizon.strip():
+            raise ValueError('Investment horizon is required')
+        profile = current_profile()
+        if profile.mode.value in {'QUICK', 'OFFLINE'}:
             allow_llm_planning = False
             max_iterations = 0
         return AgentState(
@@ -158,7 +184,11 @@ class AnalysisService:
             portfolio_positions=portfolio_positions or [],
             allow_llm_planning=allow_llm_planning,
             force_data_refresh=force_data_refresh,
-            **({"request_budget": current_metrics().budget.model_copy(deep=True)} if current_metrics() else {}),
+            execution_mode=profile.mode.value,
+            execution_profile=profile,
+            request_budget=constrain_budget(
+                current_metrics().budget.model_copy(deep=True) if current_metrics() else RequestBudget(), profile,
+            ),
         )
 
     @staticmethod
@@ -172,7 +202,8 @@ class AnalysisService:
     def _merge(state: AgentState, update: dict[str, object]) -> AgentState:
         values = state.model_dump()
         for key, value in update.items():
-            if key in {"messages", "trace", "completed_tasks", "llm_reviews", "agent_reports"}:
+            if key in {"messages", "trace", "completed_tasks", "llm_reviews", "agent_reports", "task_executions",
+                       "reanalysis_history", "evidence_follow_up_outcomes"}:
                 values[key] = [*values.get(key, []), *value]  # type: ignore[arg-type]
             else:
                 values[key] = value

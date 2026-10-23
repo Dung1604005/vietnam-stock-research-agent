@@ -1,5 +1,7 @@
 # Kỳ báo cáo và kiểm tra độ mới của Research RAG
 
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
 Hệ thống tách ba thời điểm: **kỳ dữ liệu**, **ngày công bố** và **thời điểm tải**. Crawl lại hoặc đăng lại một báo cáo không làm mới kỳ dữ liệu của nó.
 
 ## Nhận diện kỳ

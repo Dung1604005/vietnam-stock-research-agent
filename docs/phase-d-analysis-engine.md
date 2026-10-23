@@ -1,5 +1,7 @@
 # Phase D — Analysis Engine Baseline
 
+> Reviewed 23/10/2026: current policy identifiers corrected below. Canonical financial facts enforce compatible period/unit/basis/consolidation; current statements can supersede stale ratio growth. See [current report](project-report.md).
+
 ## Status
 
 The deterministic Phase D baseline is implemented. It improves analysis quality only where a verified structured input exists. It does not claim that missing benchmark, event, portfolio, publication-time, or adjustment data exists.
@@ -16,7 +18,7 @@ The deterministic Phase D baseline is implemented. It improves analysis quality 
 | TTM, dilution, dividend and valuation history | Blocked safely | Quarterly rows and corporate-action records exist, but the free source has no authoritative statement publication timestamp or validated adjustment policy. |
 | Sector-specific treatment | Done for supported templates | Golden calculation fixtures cover bank, securities, insurance, real estate and generic templates; VCI profile sector is current metadata, not a point-in-time sector master. |
 | Data, market, business, event and portfolio risk sections | Done with explicit availability | Verified VCI issuer events and user-supplied portfolio weights are assessed when present; otherwise they are `UNKNOWN`. |
-| Versioned score/rating policy and evidence lineage | Done, uncalibrated | `technical-v2`, `fundamental-v2`, `risk-v2`, `synthesis-v2`; no predictive calibration claim. |
+| Versioned score/rating policy and evidence lineage | Done, uncalibrated | `technical-v2` (or `technical-v3-lstm20` when blended), `fundamental-v3-quality-weighted`, `risk-v4-decomposed`, `synthesis-v3-conflict-gated`; no predictive calibration claim. |
 
 ## Technical analysis
 
@@ -34,7 +36,7 @@ When `STOCK_AGENT_BENCHMARK_ENABLED=true` (the default), `DataAgent` also attemp
 
 ## Fundamental analysis
 
-Fundamental output now uses typed evidence with input fields, source IDs and as-of date. It records `fundamental-v2`, feature contributions, the selected template, and unavailable inputs.
+Fundamental output now uses typed evidence with input fields, source IDs and as-of date. It records `fundamental-v3-quality-weighted`, feature contributions, the selected template, and unavailable inputs.
 
 The current templates are `BANK`, `SECURITIES`, `INSURANCE`, `REAL_ESTATE`, and `NON_FINANCIAL_GENERIC`. The live VCI provider now makes a bounded `Company.overview` call and preserves its returned company name, sector and exchange as a `COMPANY_PROFILE` source reference/snapshot. A missing profile keeps the template as `NON_FINANCIAL_GENERIC_UNVERIFIED_SECTOR`. Banking/financial templates do not treat debt-to-equity as generic corporate leverage.
 
@@ -44,7 +46,7 @@ The provider retrieves annual income statement, balance sheet and cash-flow tabl
 
 ## Risk analysis
 
-`risk-v2` decomposes output into these sections:
+`risk-v4-decomposed` decomposes output into these sections:
 
 - `market`: realised volatility and drawdown;
 - `liquidity`: average traded value;

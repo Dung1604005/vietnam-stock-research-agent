@@ -11,6 +11,29 @@ class ResponseComposer:
     RISK_LABELS = {"LOW": "THẤP", "MEDIUM": "TRUNG BÌNH", "HIGH": "CAO"}
 
     @classmethod
+    def partial_analysis(cls, state: AgentState) -> AssistantResponse:
+        """Preserve verified data when a requested analysis cannot complete."""
+        if state.market_data is None:
+            raise ValueError('No verified market data is available')
+        if state.final_decision and state.technical_result and state.fundamental_result and state.risk_result:
+            return cls.full_analysis(state)
+        if state.risk_result:
+            return cls.risk(state)
+        if state.technical_result:
+            return cls.technical(state)
+        if state.fundamental_result:
+            return cls.fundamental(state)
+        data = state.market_data
+        response = AssistantResponse(
+            message=f'### {state.ticker} · Kết quả một phần\n\nĐã xác minh {len(data.bars)} phiên giá đến {data.as_of}. '
+                    'Các bước phân tích chưa hoàn tất; chưa có kết luận đầu tư.',
+            response_type=ResponseType.ANALYSIS, tickers=[state.ticker], agent_trace=state.trace,
+            sources=cls._sources(state), source_details=cls._source_details(state),
+            warnings=cls._warnings(state), data_timestamp=data.as_of, data_fetched_at=data.fetched_at,
+            metadata={**cls._agent_quality_metadata(state, [AgentName.DATA]), 'analysis_status': 'PARTIAL'})
+        return response
+
+    @classmethod
     def full_analysis(cls, state: AgentState) -> AssistantResponse:
         if not all((state.final_decision, state.technical_result, state.fundamental_result, state.risk_result, state.market_data)):
             raise ValueError("Full analysis result is incomplete")
@@ -231,7 +254,24 @@ class ResponseComposer:
         from stock_multi_agent.services.analysis_explainer import AnalysisExplainer
         from stock_multi_agent.services.chart_service import ChartService
         from stock_multi_agent.models.chart import ChartRequest, ChartType
-        AnalysisExplainer().attach(response, state, sections)
+        risk_unavailable = state.risk_result is not None and state.risk_result.assessment_status == 'UNAVAILABLE'
+        unavailable = {key for key, value in (('technical', state.technical_result), ('fundamental', state.fundamental_result))
+                       if value is not None and value.signal.value == 'UNKNOWN'}
+        AnalysisExplainer().attach(response, state, [item for item in sections if item not in unavailable and (item != 'risk' or not risk_unavailable)])
+        for key, label in (('technical', 'Kỹ thuật'), ('fundamental', 'Cơ bản')):
+            if key in unavailable:
+                response.message = '\n'.join(
+                    f'**{label}:** CHƯA XÁC ĐỊNH · chưa đủ bằng chứng chấm điểm.' if line.startswith(f'**{label}:**')
+                    else '**Tín hiệu:** CHƯA XÁC ĐỊNH · chưa đủ bằng chứng chấm điểm.' if line.startswith('**Tín hiệu:** UNKNOWN')
+                    else line for line in response.message.split('\n'))
+        if risk_unavailable:
+            response.message = '\n'.join(
+                '**Rủi ro đo lường:** CHƯA ĐÁNH GIÁ · Risk agent không khả dụng.' if line.startswith('**Rủi ro đo lường:**')
+                else '**Rủi ro riêng doanh nghiệp:** CHƯA ĐÁNH GIÁ.' if line.startswith('**Rủi ro riêng doanh nghiệp:**')
+                else line for line in response.message.split('\n'))
+            response.metadata.update(risk_level='UNKNOWN', risk_score=None,
+                                     issuer_risk_level='UNKNOWN', issuer_risk_score=None)
+        response.metadata['risk_assessment_status'] = state.risk_result.assessment_status if state.risk_result else 'NOT_REQUESTED'
         from stock_multi_agent.services.financial_facts import build_financial_evidence
         response.metadata['canonical_financial_evidence'] = build_financial_evidence(state.market_data)
         response.metadata['evidence_follow_up_outcomes'] = state.evidence_follow_up_outcomes
@@ -271,6 +311,10 @@ class ResponseComposer:
 
         evaluation = AgentEvaluationService().evaluate(state, expected_agents)
         return {
+            'analysis_run_id': state.run_id,
+            'workflow_version': state.workflow_version,
+            'task_executions': [item.model_dump(mode='json') for item in state.task_executions],
+            'analysis_status': 'PARTIAL' if any(report.status != 'COMPLETED' for report in state.agent_reports) else 'COMPLETED',
             "agent_reports": [report.model_dump(mode="json") for report in state.agent_reports],
             "agent_evaluation": evaluation.model_dump(mode="json"),
         }
@@ -291,6 +335,7 @@ class ResponseComposer:
     @staticmethod
     def _warnings(state: AgentState) -> list[str]:
         warnings = list(state.market_data.warnings) if state.market_data else []
+        warnings.extend(report.summary for report in state.agent_reports if report.status == 'UNAVAILABLE')
         return list(dict.fromkeys(warnings))
 
     @staticmethod
@@ -311,13 +356,18 @@ class ResponseComposer:
         return list(unique.values())
 
     @staticmethod
-    def _agent_messages(state: AgentState) -> list[dict[str, str]]:
+    def _agent_messages(state: AgentState) -> list[dict]:
         return [
             {
                 "sender": message.sender.value,
                 "receiver": message.receiver.value,
                 "type": message.message_type.value,
                 "task": message.task,
+                'id': str(message.id),
+                'run_id': message.run_id,
+                'task_id': message.task_id,
+                'reply_to': str(message.reply_to) if message.reply_to else None,
+                'input_fingerprint': message.input_fingerprint,
             }
             for message in state.messages
         ]

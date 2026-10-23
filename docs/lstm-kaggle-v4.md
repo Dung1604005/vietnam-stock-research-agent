@@ -12,7 +12,7 @@ V4 does not place trades and must not be described as an investment system. A `R
 2. Upload `.runtime/ml/vci_ohlcv_lstm_1m.csv` and its metadata JSON.
 3. Create a Kaggle Notebook and attach that Dataset.
 4. Select **Accelerator -> GPU**. One T4 is sufficient; the pipeline does not require two GPUs.
-5. Upload and open `notebooks/train_lstm_kaggle_v4.ipynb`, then choose **Run all**.
+5. Upload and open `notebooks/train_lstm_kaggle_v4_ready.ipynb`, then choose **Run all**. The current ready notebook is self-contained; see [the later V4 development review](lstm-v4-research-and-training.md). This document preserves the earlier experiment protocol, not the latest runtime/promotion state.
 6. Do not edit a configuration after looking at its test result. A new experiment needs a new untouched holdout period.
 
 The notebook is a real `.ipynb` containing executable Python. Do not paste its raw JSON into a code cell. As an alternative, paste the contents of `notebooks/train_lstm_kaggle_v4.py` into one Kaggle code cell.

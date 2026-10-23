@@ -1,5 +1,7 @@
 # Hybrid semantic NLU
 
+> 23/10/2026: evaluator đạt intent/ticker 126/126, period 6/6, follow-up 24/24, clarification 6/6, multi-intent 5/5; ECE 0.0507. Đây là regression do dự án tạo, không phải holdout độc lập. Baseline Before giữ số liệu lịch sử 120 câu nên không phải phép so sánh cùng mẫu.
+
 ## Pipeline
 
 ```mermaid
@@ -36,7 +38,7 @@ For stock discovery, `requested_result_count` is a typed intent field. The servi
 
 ## Structured providers
 
-The current demo profile uses `STOCK_AGENT_LLM_PROVIDER=colab_qwen` with Qwen2.5-3B-Instruct on Google Colab. The OpenAI and Ollama adapters remain optional. Every provider receives the same typed JSON schema, and provider/network failure falls back to local semantic similarity.
+Provider selection is configurable. The Colab client default/training target is Qwen/Qwen3-4B-Instruct-2507; legacy Qwen2.5 endpoints remain explicit configurations and are not silently migrated. The OpenAI and Ollama adapters remain optional. Every provider receives the same typed JSON schema, and provider/network failure falls back to local semantic similarity.
 
 No hidden chain-of-thought is stored or displayed. The debug UI contains only the intent, entities, confidence, resolved references, interpretation, route and bounded task plan.
 
@@ -46,20 +48,20 @@ Only `RouteStep` enum values in the allowlist can appear in a plan; semantic par
 
 `ParsedQuery` records parser source, total/LLM latency, LLM-attempt status, safe fallback reason and prompt/example-bank versions. The parser also emits a structured application log. Token and cost fields are intentionally not reported: current provider adapters return no usage metadata, so the application does not estimate or invent cost.
 
-The task plan is a validated declaration of intended work. It does not yet replace the existing `ChatService` selective methods or the `StockAgentGraph` full-analysis executor with a generic DAG executor.
+The task plan is bound to execution by ChatPlanExecution and PlanExecutor. They check approved tasks, dependencies, actual typed outputs and completion status. The full LangGraph/batch services own their composite internals; this is not an arbitrary code-generating DAG executor.
 
-## Why no sentence-transformers dependency
+## Why the NLU fallback does not require sentence-transformers
 
 The local fallback uses character n-gram cosine similarity because it is small, deterministic, typo-tolerant and requires no model download. `sentence-transformers` would add a large PyTorch/model footprint and slow first-time setup. A production deployment can add embeddings behind the same classifier interface if measured accuracy on a larger out-of-sample dataset justifies it.
 
 ## Evaluation
 
-Dataset: `tests/data/semantic_queries.json`, 122 queries covering formal and conversational Vietnamese, no-diacritic text, English mixing, abbreviations, mild typos, context references, clarification, multiple intents and explicit screening cardinality/direction. Its indicator-definition expectations now use `THEORY`; Knowledge QA has a separate 56-case author-created set documented in [knowledge-base.md](knowledge-base.md).
+Dataset: `tests/data/semantic_queries.json`, 126 queries (re-evaluated 23/10/2026) covering formal and conversational Vietnamese, no-diacritic text, English mixing, abbreviations, mild typos, context references, clarification, multiple intents and explicit screening cardinality/direction. Its indicator-definition expectations now use `THEORY`; Knowledge QA has a separate 56-case author-created set documented in [knowledge-base.md](knowledge-base.md).
 
 | Metric | Before | After |
 |---|---:|---:|
-| Intent accuracy | 50.0% (60/120) | 100.0% (122/122) |
-| Ticker extraction accuracy | 70.8% (85/120) | 100.0% (122/122) |
+| Intent accuracy | 50.0% (60/120) | 100.0% (126/126) |
+| Ticker extraction accuracy | 70.8% (85/120) | 100.0% (126/126) |
 | Period extraction accuracy | 66.7% (4/6) | 100.0% (6/6) |
 | Follow-up resolution accuracy | 25.0% (6/24) | 100.0% (24/24) |
 | Clarification accuracy | 0.0% (0/5) | 100.0% (6/6) |

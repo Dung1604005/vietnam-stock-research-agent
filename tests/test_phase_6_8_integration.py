@@ -157,11 +157,12 @@ def test_streamlit_offline_worker_rerun_and_exports(monkeypatch, tmp_path):
     monkeypatch.setattr(socket, 'create_connection', forbidden)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'app/streamlit_app.py'), default_timeout=30)
     app.session_state['chat_service'] = service
-    app.session_state['chat_service_runtime_profile'] = 'free-qwen3-phase6-8-profiles-events-v5'
+    from stock_multi_agent.services.runtime_identity import SERVICE_RUNTIME_PROFILE
+    app.session_state['chat_service_runtime_profile'] = f'{SERVICE_RUNTIME_PROFILE}:v2'
     app.run()
     assert not app.exception
-    app.selectbox[0].select('OFFLINE').run()
-    app.text_input[0].set_value(str(replay)).run()
+    next(widget for widget in app.selectbox if widget.label == 'Chế độ chạy').select('OFFLINE').run()
+    next(widget for widget in app.text_input if widget.label == 'Replay bundle JSON trên ổ D').set_value(str(replay)).run()
     app.chat_input[0].set_value('Phân tích FPT').run()
     assert not app.exception
     responses = [message.response for item in app.session_state['conversations'].values()

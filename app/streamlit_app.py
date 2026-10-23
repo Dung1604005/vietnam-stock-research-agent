@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 import time
 
-from stock_multi_agent.chat.conversation import InMemoryConversationStore
+from stock_multi_agent.chat.conversation import SQLiteConversationStore
 from stock_multi_agent.models.chat import ChatRole
 from stock_multi_agent.services.chat_service import ChatService
 from stock_multi_agent.services.analysis_service import AnalysisService
@@ -43,7 +43,7 @@ SUGGESTIONS = [
 # Increment when provider construction defaults change. Streamlit preserves
 # session_state across source reloads, so this prevents an old provider object
 # from retaining a bursty rate-limit policy after an application upgrade.
-SERVICE_RUNTIME_PROFILE = "free-qwen3-phase6-8-v2-v4-selector-v7"
+from stock_multi_agent.services.runtime_identity import SERVICE_RUNTIME_PROFILE
 
 
 with st.sidebar:
@@ -56,26 +56,26 @@ with st.sidebar:
         st.info('V4 đang thử nghiệm, chưa qua forward validation. Bạn đang chọn dùng trọng số demo 20%.')
 
 
-def initialize_session() -> tuple[ChatService, InMemoryConversationStore]:
+def initialize_session() -> tuple[ChatService, SQLiteConversationStore]:
     runtime_profile = f'{SERVICE_RUNTIME_PROFILE}:{selected_lstm}'
     if st.session_state.get("chat_service_runtime_profile") != runtime_profile:
         forecast_service = PriceForecastService.from_environment(default_enabled=True,
-            model_version=selected_lstm, experimental_blend=selected_lstm == 'v4')
+            model_version=selected_lstm, experimental_blend=selected_lstm == 'v4', defer_load=True)
         st.session_state.chat_service = ChatService(
             analysis_service=AnalysisService(price_forecast_service=forecast_service)
         )
         st.session_state.chat_service_runtime_profile = runtime_profile
     if "conversations" not in st.session_state:
         st.session_state.conversations = {}
-    store = InMemoryConversationStore(st.session_state.conversations)
+    store = SQLiteConversationStore(st.session_state.conversations)
     if not st.session_state.get("current_conversation_id"):
-        conversation = store.create()
+        conversation = next(iter(store.list()), None) or store.create()
         st.session_state.current_conversation_id = conversation.conversation_id
         st.session_state.conversations = store.items
     return st.session_state.chat_service, store
 
 
-def new_chat(store: InMemoryConversationStore) -> None:
+def new_chat(store: SQLiteConversationStore) -> None:
     conversation = store.create()
     st.session_state.current_conversation_id = conversation.conversation_id
     st.session_state.conversations = store.items

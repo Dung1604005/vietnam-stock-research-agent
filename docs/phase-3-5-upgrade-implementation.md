@@ -1,5 +1,7 @@
 # Triển khai Phase 3–5
 
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
 Ngày bắt đầu: 17/10/2026. Không thêm dịch vụ trả phí, không thay artifact LSTM V2,
 không kết nối broker. Mọi đường dẫn runtime/model/cache giữ trên ổ D.
 

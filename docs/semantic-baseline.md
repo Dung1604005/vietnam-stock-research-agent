@@ -1,5 +1,7 @@
 # Semantic NLU baseline
 
+> HISTORICAL BASELINE: giữ mẫu và metric gốc 120 câu. Regression hiện tại có 126 câu; không so hai cột khác mẫu như một holdout công bằng. Xem [semantic-nlu.md](semantic-nlu.md).
+
 Dataset: `tests/data/semantic_queries.json` (120 cases).  
 Parser: original deterministic `QueryParser`, measured before the semantic NLU implementation.
 

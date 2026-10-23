@@ -159,6 +159,7 @@ class FundamentalAnalysis(BaseModel):
 
 
 class RiskAnalysis(BaseModel):
+    assessment_status: str = Field(default='ASSESSED', pattern=r'^(ASSESSED|UNAVAILABLE)$')
     risk_level: RiskLevel
     risk_score: float = Field(ge=0, le=10)
     criticisms: list[str]

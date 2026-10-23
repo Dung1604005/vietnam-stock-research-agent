@@ -12,7 +12,7 @@ from stock_multi_agent.services.request_telemetry import current_metrics
 ALLOWED_TASKS = frozenset({'FETCH_FINANCIAL_HISTORY', 'VERIFY_FINANCIAL_FACT',
                            'FIND_RECENT_REPORT', 'CHECK_RISK_EVENT'})
 ADDITIVE_FIELDS = ('messages', 'llm_reviews', 'agent_reports', 'trace', 'completed_tasks',
-                   'reanalysis_history', 'evidence_follow_up_outcomes')
+                   'reanalysis_history', 'evidence_follow_up_outcomes', 'task_executions')
 
 
 def evidence_fingerprint(state):
@@ -88,18 +88,22 @@ def run_evidence_follow_up(state, graph):
     work = state.model_copy(deep=True)
     before = evidence_fingerprint(state)
     lengths = {key: len(getattr(state, key)) for key in ADDITIVE_FIELDS}
+    from stock_multi_agent.services.agent_execution import execute_agent
+    def run(agent, node, action, **kwargs):
+        _apply(work, execute_agent(work, agent, node, action, **kwargs))
     try:
         metrics = current_metrics()
         if metrics:
             metrics.consume('tool')  # covers even fixture/custom tools without instrumentation
         if selected['task_kind'] == 'FETCH_FINANCIAL_HISTORY':
             work.required_data = list(dict.fromkeys([*work.required_data, 'financials']))
-            _apply(work, graph.data_agent.run(work, refresh=True))
+            run(graph.data_agent, 'data_follow_up', lambda value: graph.data_agent.run(value, refresh=True), essential=True)
         else:
             # Exact approved objective is context, never a URL/function name to execute.
             work.user_goal = f'{state.user_goal}\nEvidence follow-up: {selected["task_kind"]}; metric={selected.get("metric") or "unspecified"}; period={selected.get("period_end") or "latest"}'
-            _apply(work, graph.research_agent.run(work, expanded=True, follow_up_task=selected['task_kind'],
-                follow_up_metric=selected.get('metric'), follow_up_period=selected.get('period_end')))
+            run(graph.research_agent, 'research_follow_up', lambda value: graph.research_agent.run(value,
+                expanded=True, follow_up_task=selected['task_kind'], follow_up_metric=selected.get('metric'),
+                follow_up_period=selected.get('period_end')))
             work.user_goal = state.user_goal
             advisor = getattr(graph.fundamental_agent, 'llm_advisor', None)
             if selected['task_kind'] in {'VERIFY_FINANCIAL_FACT', 'FIND_RECENT_REPORT'} and advisor is not None and hasattr(advisor, 'map_statement_facts'):
@@ -114,22 +118,26 @@ def run_evidence_follow_up(state, graph):
         if changed:
             # Recompute from data, never copy an LLM-proposed numerical score.
             if selected['task_kind'] == 'FETCH_FINANCIAL_HISTORY':
-                _apply(work, graph._forecast(work))
-                _apply(work, graph.technical_agent.run(work, extended=True, allow_llm_planning=False))
+                run(graph.data_agent, 'forecast_follow_up', graph._forecast, allowed_outputs={'price_forecast'})
+                run(graph.technical_agent, 'technical_follow_up', lambda value: graph.technical_agent.run(value,
+                    extended=True, allow_llm_planning=False))
                 from stock_multi_agent.models.llm import AgentLLMReview
                 if any(item.agent == AgentName.TECHNICAL for item in work.llm_reviews):
                     work.llm_reviews.append(AgentLLMReview(agent=AgentName.TECHNICAL,
                         task='Invalidate pre-refresh technical review', status='UNAVAILABLE',
                         assessment='Dữ liệu đã thay đổi; giữ chỉ báo Python tính lại, không tái sử dụng review LLM cũ.',
                         grounding_audit={'invalidated_after_data_refresh': True}))
-            _apply(work, graph.fundamental_agent.run(work, allow_llm_review=False))
-            _apply(work, graph.risk_agent.run(work, allow_llm_review=False))
+            run(graph.fundamental_agent, 'fundamental_follow_up', lambda value: graph.fundamental_agent.run(value, allow_llm_review=False))
+            run(graph.risk_agent, 'risk_follow_up', lambda value: graph.risk_agent.run(value, allow_llm_review=False))
             _apply(work, graph._specialist_reviews(work))
             work.active_conflicts = graph.manager_agent.assess_conflicts(work)
             work.conflict_detected = bool(work.active_conflicts)
         else:
             # No changed evidence means no refreshed timestamps mixed with old analyses.
+            audit = {key: getattr(work, key)[lengths[key]:]
+                     for key in ('messages', 'trace', 'agent_reports', 'llm_reviews', 'task_executions')}
             work = state.model_copy(deep=True)
+            _apply(work, audit)
         work.iteration = state.iteration + 1
         selected.update(before_fingerprint=before, after_fingerprint=evidence_fingerprint(work))
         work.evidence_follow_up_outcomes.extend([*attempted, selected])

@@ -22,6 +22,7 @@ class BudgetExceeded(RuntimeError):
 
 
 _current: ContextVar[RequestMetrics | None] = ContextVar("research_request", default=None)
+_task_deadline: ContextVar[float | None] = ContextVar("research_task_deadline", default=None)
 
 
 class RequestMetrics:
@@ -40,13 +41,24 @@ class RequestMetrics:
         self._lock = RLock()
         self.nodes: list[dict] = []
 
+    def remaining_seconds(self) -> float:
+        """Time remaining in this request, including any narrower task scope."""
+        deadline = self.started + self.budget.deadline_seconds
+        task_deadline = _task_deadline.get()
+        if task_deadline is not None:
+            deadline = min(deadline, task_deadline)
+        return max(0.0, deadline - time.perf_counter())
+
+    def check_deadline(self) -> None:
+        if self.remaining_seconds() <= 0:
+            raise BudgetExceeded("Request or task deadline exceeded")
+
     def consume(self, kind: str):
         with self._lock:
             self._consume(kind)
 
     def _consume(self, kind: str):
-        if time.perf_counter() - self.started >= self.budget.deadline_seconds:
-            raise BudgetExceeded("Request deadline exceeded")
+        self.check_deadline()
         if kind == "llm":
             if self.llm_calls >= self.budget.max_llm_calls:
                 raise BudgetExceeded("Request LLM call budget exhausted")
@@ -85,6 +97,64 @@ def current_metrics() -> RequestMetrics | None:
     return _current.get()
 
 
+def remaining_seconds() -> float | None:
+    """Effective cooperative deadline; None means no active deadline.
+
+    Callers must use transport timeouts when available. This API deliberately
+    does not create a worker thread that could outlive a timed-out request.
+    """
+    metrics = current_metrics()
+    if metrics is not None:
+        return metrics.remaining_seconds()
+    deadline = _task_deadline.get()
+    return max(0.0, deadline - time.perf_counter()) if deadline is not None else None
+
+
+def check_deadline() -> None:
+    remaining = remaining_seconds()
+    if remaining is not None and remaining <= 0:
+        raise BudgetExceeded("Request or task deadline exceeded")
+
+
+def bounded_timeout(timeout_seconds: float) -> float:
+    """Clamp one transport operation without widening a request/task deadline."""
+    check_deadline()
+    remaining = remaining_seconds()
+    return min(timeout_seconds, remaining) if remaining is not None else timeout_seconds
+
+
+def bounded_sleep(seconds: float, sleeper=time.sleep) -> None:
+    """Wait at most the remaining budget and never start work after expiry."""
+    check_deadline()
+    remaining = remaining_seconds()
+    duration = max(0.0, seconds)
+    exhausts_budget = remaining is not None and duration >= remaining
+    if remaining is not None:
+        duration = min(duration, remaining)
+    if duration:
+        sleeper(duration)
+    if exhausts_budget:
+        raise BudgetExceeded("Request or task deadline exhausted while waiting")
+    check_deadline()
+
+
+@contextmanager
+def task_deadline_scope(timeout_seconds: float):
+    """Narrow the active deadline for a task; restore it before finalization.
+
+    Deadline checks remain explicit so persistence, telemetry and partial-result
+    formatting can finish after work has been stopped.
+    """
+    deadline = time.perf_counter() + max(0.0, timeout_seconds)
+    inherited = _task_deadline.get()
+    token = _task_deadline.set(min(inherited, deadline) if inherited is not None else deadline)
+    try:
+        check_deadline()
+        yield
+    finally:
+        _task_deadline.reset(token)
+
+
 @contextmanager
 def request_scope(budget: RequestBudget | None = None):
     metrics = RequestMetrics(budget)
@@ -108,9 +178,13 @@ def observed(name: str, kind: str | None = None):
             status = "ok"
             terminal_status = 'SUCCEEDED'
             try:
-                if kind and metrics:
-                    metrics.consume(kind)
+                if kind:
+                    check_deadline()
+                    if metrics:
+                        metrics.consume(kind)
                 result = function(*args, **kwargs)
+                if kind:
+                    check_deadline()
                 if isinstance(result, dict):
                     reports = result.get('agent_reports', [])
                     statuses = [item.get('status') if isinstance(item, dict) else getattr(item, 'status', None) for item in reports]

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from stock_multi_agent.services.request_telemetry import observed
+from stock_multi_agent.services.request_telemetry import BudgetExceeded, bounded_timeout, check_deadline, observed
 
 import os
 import re
@@ -21,6 +21,12 @@ from stock_multi_agent.models.research import WebCitation
 
 class WebResearchError(RuntimeError):
     """The optional live discovery service could not return a safe result."""
+
+
+def _request_timeout(seconds=12):
+    from stock_multi_agent.services.execution_profiles import assert_external_allowed
+    assert_external_allowed('research.discovery')
+    return bounded_timeout(seconds)
 
 
 @dataclass(frozen=True)
@@ -70,18 +76,26 @@ class VnstockCompanyNameResolver:
     """Use the project's existing VCI source to disambiguate a ticker for web search."""
 
     def resolve(self, ticker: str) -> str | None:
+        from stock_multi_agent.services.execution_profiles import assert_external_allowed
+        assert_external_allowed('research.company_name')
+        check_deadline()
         try:
             from vnstock.api.company import Company
 
             source = os.getenv("VNSTOCK_SOURCE", "VCI").upper()
+            check_deadline()
             overview = Company(symbol=ticker, source=source).overview()
+            check_deadline()
             if getattr(overview, "empty", True):
                 return None
             value = overview.iloc[0].get("organ_name") or overview.iloc[0].get("organ_short_name")
             if not isinstance(value, str) or not value.strip():
                 return None
             return re.sub(r"\s+", " ", value).strip()
+        except BudgetExceeded:
+            raise
         except Exception:
+            check_deadline()
             return None
 
 
@@ -105,6 +119,7 @@ class HnxIssuerDiscoveryProvider:
         if not re.fullmatch(r"[A-Z0-9]{3,10}", symbol):
             return []
         for template in self.endpoints:
+            check_deadline()
             source_url = template.format(ticker=symbol)
             page_text = self._fetch_text(source_url)
             if not page_text or not self._matches_ticker(page_text, symbol):
@@ -125,9 +140,11 @@ class HnxIssuerDiscoveryProvider:
             headers={"User-Agent": "StockResearchAssistant/0.1 (official issuer discovery)"},
         )
         try:
-            with urlopen(request, timeout=12, context=self._ssl_context()) as response:  # noqa: S310 - fixed HNX endpoints
+            with urlopen(request, timeout=_request_timeout(), context=self._ssl_context()) as response:  # noqa: S310 - fixed HNX endpoints
                 payload = response.read(self.max_response_bytes + 1)
+            check_deadline()
         except OSError:
+            check_deadline()
             return ""
         if len(payload) > self.max_response_bytes:
             return ""
@@ -208,9 +225,11 @@ class DuckDuckGoHtmlSearchProvider:
             headers={"User-Agent": "StockResearchAssistant/0.1 (citation-first web discovery)"},
         )
         try:
-            with urlopen(request, timeout=12) as response:  # noqa: S310 - fixed search endpoint
+            with urlopen(request, timeout=_request_timeout()) as response:  # noqa: S310 - fixed search endpoint
                 payload = response.read(self.max_response_bytes + 1)
+            check_deadline()
         except OSError as exc:
+            check_deadline()
             raise WebResearchError("Live web search is temporarily unavailable.") from exc
         if len(payload) > self.max_response_bytes:
             raise WebResearchError("Live web search response exceeded the safety limit.")
@@ -258,9 +277,11 @@ class BingRssSearchProvider:
             headers={"User-Agent": "StockResearchAssistant/0.1 (citation-first web discovery)"},
         )
         try:
-            with urlopen(request, timeout=12) as response:  # noqa: S310 - fixed search endpoint
+            with urlopen(request, timeout=_request_timeout()) as response:  # noqa: S310 - fixed search endpoint
                 payload = response.read(self.max_response_bytes + 1)
+            check_deadline()
         except OSError as exc:
+            check_deadline()
             raise WebResearchError("Live web search is temporarily unavailable.") from exc
         if len(payload) > self.max_response_bytes:
             raise WebResearchError("Live web search response exceeded the safety limit.")
@@ -314,9 +335,11 @@ class GdeltNewsSearchProvider:
             headers={"Accept": "application/json", "User-Agent": "StockResearchAssistant/0.1 (research discovery)"},
         )
         try:
-            with urlopen(request, timeout=12) as response:  # noqa: S310 - fixed GDELT public API endpoint
+            with urlopen(request, timeout=_request_timeout()) as response:  # noqa: S310 - fixed GDELT public API endpoint
                 payload = response.read(self.max_response_bytes + 1)
+            check_deadline()
         except OSError as exc:
+            check_deadline()
             raise WebResearchError("GDELT news discovery is temporarily unavailable.") from exc
         if len(payload) > self.max_response_bytes:
             raise WebResearchError("GDELT response exceeded the safety limit.")
@@ -357,9 +380,12 @@ class FreeSearchProvider:
         seen_urls: set[str] = set()
         failures: list[WebResearchError] = []
         for provider in self.providers:
+            check_deadline()
             try:
                 candidates = provider.search(query, limit)
+                check_deadline()
             except WebResearchError as exc:
+                check_deadline()
                 failures.append(exc)
                 continue
             for candidate in candidates:
@@ -434,9 +460,11 @@ class BraveSearchApiProvider:
             headers={"Accept": "application/json", "X-Subscription-Token": self.api_key},
         )
         try:
-            with urlopen(request, timeout=12) as response:  # noqa: S310 - fixed official Brave API endpoint
+            with urlopen(request, timeout=_request_timeout()) as response:  # noqa: S310 - fixed official Brave API endpoint
                 payload = response.read(self.max_response_bytes + 1)
+            check_deadline()
         except HTTPError as exc:
+            check_deadline()
             detail = self._http_error_detail(exc)
             label = {
                 401: "authentication failed",
@@ -447,6 +475,7 @@ class BraveSearchApiProvider:
             suffix = f": {detail}" if detail else ""
             raise WebResearchError(f"Brave Search API {label} (HTTP {exc.code}){suffix}") from exc
         except (URLError, OSError) as exc:
+            check_deadline()
             raise WebResearchError(f"Brave Search API network error: {type(exc).__name__}") from exc
         if len(payload) > self.max_response_bytes:
             raise WebResearchError("Brave Search API response exceeded the safety limit.")
@@ -535,20 +564,25 @@ class WebResearchService:
             raise WebResearchError("Web search query cannot be empty.")
         retrieved_at = datetime.now(timezone.utc)
         issuer_results = self.issuer_provider.search(ticker) if ticker else []
+        check_deadline()
         # An HNX profile is useful, but must not suppress current issuer-IR,
         # news, or industry sources returned by the configured provider.
         # The verified exchange profile already disambiguates the symbol. Avoid
         # an unnecessary VCI lookup in that case; it is only a fallback for an
         # ambiguous ticker when the exchange profile is unavailable.
         company_name = self.company_name_resolver.resolve(ticker) if ticker and not issuer_results else None
+        check_deadline()
         search_query = self._build_search_query(query, ticker, company_name)
         if not search_query:
             raise WebResearchError("Web search query cannot be empty.")
         provider_results: list[WebSearchResult] = []
         provider_error: WebResearchError | None = None
         try:
+            check_deadline()
             provider_results = self.provider.search(search_query, max(1, min(limit, 8)))
+            check_deadline()
         except WebResearchError as exc:
+            check_deadline()
             provider_error = exc
         if provider_error and not issuer_results:
             raise provider_error

@@ -10,6 +10,7 @@ from typing import Protocol
 from urllib.request import Request, urlopen
 
 import numpy as np
+from stock_multi_agent.services.request_telemetry import bounded_timeout, check_deadline
 
 
 class EmbeddingProvider(Protocol):
@@ -100,8 +101,9 @@ class OllamaEmbeddingProvider:
         assert_external_allowed('embedding.ollama')
         body = json.dumps({"model": self.model, "input": texts, "truncate": True}).encode("utf-8")
         request = Request(f"{self.base_url}/api/embed", data=body, headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - configured local Ollama
+        with urlopen(request, timeout=bounded_timeout(self.timeout_seconds)) as response:  # noqa: S310 - configured local Ollama
             payload = json.loads(response.read())
+        check_deadline()
         vectors = payload.get("embeddings")
         if not isinstance(vectors, list) or len(vectors) != len(texts):
             raise RuntimeError("Ollama returned an invalid embedding response")
@@ -126,17 +128,21 @@ class E5EmbeddingProvider:
     def _encode(self, texts: list[str], prefix: str) -> list[np.ndarray]:
         if not texts:
             return []
+        check_deadline()
         if self._model is None:
             from stock_multi_agent.services.execution_profiles import current_profile
             from sentence_transformers import SentenceTransformer
+            check_deadline()
             root = Path(os.getenv("STOCK_AGENT_RUNTIME_DIR", str(Path(__file__).resolve().parents[3] / ".runtime"))).resolve()
             if os.name == "nt" and root.drive.upper() != "D:":
                 raise ValueError("Embedding models must be stored on D:")
             self._model = SentenceTransformer("intfloat/multilingual-e5-small", device="cpu",
                 cache_folder=str(root / "models" / "embeddings"),
                 local_files_only=(os.getenv("STOCK_AGENT_RAG_ALLOW_MODEL_DOWNLOAD", "false").lower() != "true"
-                    or current_profile().mode.value == 'OFFLINE'))
+                    or not current_profile().external_allowed))
+        check_deadline()
         values = self._model.encode([prefix + text for text in texts], normalize_embeddings=True, batch_size=32)
+        check_deadline()
         return [np.asarray(value, dtype=np.float32) for value in values]
 
     def embed(self, texts: list[str]) -> list[np.ndarray]:

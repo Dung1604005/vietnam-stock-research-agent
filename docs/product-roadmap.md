@@ -1,5 +1,7 @@
 # Product roadmap — AI Investment Research Assistant
 
+> Roadmap mục tiêu/lịch sử; audit 23/10/2026 không biến checkbox mục tiêu thành tính năng đã có. LSTM V3/V4 đã có review GPU lịch sử, forward gate và Qwen adapter gate vẫn riêng. Hiện trạng có code/evidence: [project-report.md](project-report.md).
+
 Cập nhật triển khai 18/10/2026: chương trình nâng cấp mới dùng phase 0–8, khác cách đặt tên A–G của roadmap gốc này. Xem [kế hoạch tổng thể](comprehensive-free-upgrade-plan.md) và [bàn giao Phase 6–8](phase-6-8-implementation.md) để biết trạng thái code, dataset V3 và notebook Qwen3; GPU training/human review/model promotion vẫn chờ nghiệm thu riêng.
 
 ## 1. Mục tiêu sản phẩm

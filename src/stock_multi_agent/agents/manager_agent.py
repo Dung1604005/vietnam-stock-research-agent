@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from typing import Any
@@ -13,6 +14,7 @@ from stock_multi_agent.models.agent_contracts import AgentSpec, ManagerContext
 from stock_multi_agent.models.analysis import Recommendation, RiskLevel, Signal, FinalDecision
 from stock_multi_agent.models.chat import AssistantResponse, ParsedQuery, QueryIntent, ResponseType
 from stock_multi_agent.models.conflicts import ConflictKind, ConflictRecord, ReanalysisAction
+from stock_multi_agent.models.data import QualitySeverity, QualityStatus
 from stock_multi_agent.models.messages import AgentMessage, AgentName, MessageType
 from stock_multi_agent.models.state import AgentState
 from stock_multi_agent.providers.llm_provider import SemanticLLMProvider, configured_semantic_provider
@@ -66,6 +68,7 @@ class ManagerAgent(BaseAgent):
             "Do not recompute specialist metrics",
             "Do not emit BUY when a risk veto or HIGH data uncertainty is present",
             "Require sufficient evidence coverage before BUY",
+            "Do not emit BUY while a material data, time, metric, or policy conflict remains unresolved",
             "Use deterministic synthesis so the same inputs produce the same decision",
         ],
     )
@@ -281,8 +284,16 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             return [ConflictRecord(
                 kind=ConflictKind.MISSING_SPECIALIST_RESULT,
                 detail="Required specialist result is missing",
+                dimension="data",
             )]
         conflicts: list[ConflictRecord] = []
+        if state.risk_result.assessment_status == "UNAVAILABLE":
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.MISSING_SPECIALIST_RESULT,
+                detail="Risk assessment is unavailable; its numeric fields are not measured risk",
+                dimension="data",
+                suggested_action=ReanalysisAction.DATA_PIPELINE,
+            ))
         if (
             state.technical_result.signal != state.fundamental_result.signal
             and Signal.UNKNOWN not in (state.technical_result.signal, state.fundamental_result.signal)
@@ -296,6 +307,7 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                 kind=ConflictKind.SPECIALIST_DISAGREEMENT,
                 detail=f"Technical {state.technical_result.signal.value} vs Fundamental {state.fundamental_result.signal.value}",
                 suggested_action=action,
+                severity="WARNING",
             ))
         if state.technical_result.signal is Signal.UNKNOWN:
             conflicts.append(ConflictRecord(
@@ -336,6 +348,14 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                 kind=ConflictKind.LOW_SPECIALIST_CONFIDENCE,
                 detail="Specialist confidence is low",
                 suggested_action=action,
+                dimension="data",
+            ))
+        if state.risk_result.confidence < 0.5:
+            conflicts.append(ConflictRecord(
+                kind=ConflictKind.LOW_SPECIALIST_CONFIDENCE,
+                detail="Risk assessment confidence is low",
+                dimension="data",
+                suggested_action=ReanalysisAction.DATA_PIPELINE,
             ))
         recoverable_market_codes = {
             "STALE_PRICE", "PRICE_GAPS", "INSUFFICIENT_HISTORY", "INVALID_CHRONOLOGY",
@@ -345,29 +365,48 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             "INSUFFICIENT_FINANCIALS", "MISSING_FINANCIAL_PERIOD",
             "STALE_FINANCIALS", "STALE_FINANCIAL_RATIOS",
         }
-        quality_codes = {item.code for item in state.market_data.quality_report.issues} if state.market_data else set()
+        quality_issues = state.market_data.quality_report.issues if state.market_data else []
+        quality_codes = {item.code for item in quality_issues}
         relevant_codes = quality_codes & recoverable_market_codes
         if (
             state.fundamental_result.signal is Signal.UNKNOWN
             or state.fundamental_result.confidence < 0.5
         ):
             relevant_codes |= quality_codes & recoverable_financial_codes
+        # Errors must remain authoritative even when new validator codes are
+        # introduced or a specialist happens to return a confident BUY.
+        relevant_codes |= {item.code for item in quality_issues if item.severity is QualitySeverity.ERROR}
+        if state.market_data and state.market_data.quality_report.status is QualityStatus.FAIL:
+            relevant_codes.add("QUALITY_CHECK_FAILED")
         if relevant_codes:
             conflicts.append(ConflictRecord(
                 kind=ConflictKind.DATA_QUALITY_LIMITATION,
-                detail=f"Recoverable data-quality limitations: {', '.join(sorted(relevant_codes))}",
+                detail=f"Material data-quality limitations: {', '.join(sorted(relevant_codes))}",
                 suggested_action=ReanalysisAction.DATA_PIPELINE,
             ))
-        if state.investment_horizon not in state.technical_result.timeframe:
+        if state.investment_horizon.casefold().strip() not in state.technical_result.timeframe.casefold():
             conflicts.append(ConflictRecord(kind=ConflictKind.HORIZON_MISMATCH, dimension='time',
                 detail='Technical result does not match the requested investment horizon', suggested_action=ReanalysisAction.TECHNICAL))
         if state.market_data:
-            values = {}
-            for item in state.market_data.financial_observations:
-                values.setdefault((item.metric, item.unit, item.period_end), set()).add(item.value)
-            if any(len(group) > 1 for group in values.values()):
+            values: dict[tuple, list[float]] = {}
+            for item in [*state.market_data.financial_observations, *state.market_data.financial_statement_observations]:
+                # Two values are comparable only within the same declared
+                # accounting scope. Never infer missing currency/scale/basis.
+                scope = (
+                    getattr(item, 'statement', 'financial_ratio'),
+                    item.metric.casefold().strip(), item.unit.casefold().strip(),
+                    item.period_start, item.period_end,
+                    item.period_label.casefold().strip() if item.period_end is None else None,
+                    item.frequency, item.reporting_basis, item.consolidation,
+                    item.currency.upper().strip() if item.currency else None, item.scale,
+                )
+                values.setdefault(scope, []).append(item.value)
+            if any(
+                not math.isclose(min(group), max(group), rel_tol=1e-9, abs_tol=1e-12)
+                for group in values.values()
+            ):
                 conflicts.append(ConflictRecord(kind=ConflictKind.METRIC_CONFLICT, dimension='metric',
-                    detail='Conflicting observed financial values for the same metric/unit/period', suggested_action=ReanalysisAction.DATA_PIPELINE))
+                    detail='Conflicting observed financial values within the same metric, reporting period, basis, consolidation, currency, and scale', suggested_action=ReanalysisAction.DATA_PIPELINE))
         for conflict in conflicts:
             if conflict.kind == ConflictKind.DATA_QUALITY_LIMITATION:
                 conflict.dimension = 'time' if any(word in conflict.detail for word in ('STALE', 'FUTURE', 'CHRONOLOGY')) else 'data'
@@ -375,6 +414,8 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                     ConflictKind.TECHNICAL_EVIDENCE_INSUFFICIENT, ConflictKind.FUNDAMENTAL_EVIDENCE_INSUFFICIENT}:
                 conflict.dimension = 'data'
             elif conflict.kind == ConflictKind.RISK_VETO:
+                conflict.dimension = 'policy'
+            elif conflict.kind == ConflictKind.HIGH_MEASURED_RISK:
                 conflict.dimension = 'policy'
         return conflicts
 
@@ -397,6 +438,8 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                     for item in [*market.financial_observations, *market.financial_statement_observations]
                     if item.period_end is not None
                 ),
+                "financial_observations": [item.model_dump(mode="json") for item in market.financial_observations],
+                "financial_statement_observations": [item.model_dump(mode="json") for item in market.financial_statement_observations],
                 "source_ids": sorted(item.source_id for item in market.source_refs),
                 "quality_codes": sorted(item.code for item in market.quality_report.issues),
             },
@@ -530,7 +573,10 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
         technical = state.technical_result
         fundamental = state.fundamental_result
         risk = state.risk_result
-        conflicts = self.conflicts(state)
+        conflict_records = self.assess_conflicts(state)
+        conflicts = [item.detail for item in conflict_records if not item.resolved]
+        blocking_conflicts = [item for item in conflict_records if item.blocks_buy]
+        evidence_limits = [item for item in blocking_conflicts if item.dimension != "policy"]
         evidence_completeness = self._evidence_completeness(state)
         agreements: list[str] = []
         if technical.signal == fundamental.signal:
@@ -542,6 +588,7 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             and risk.data_uncertainty_level != RiskLevel.HIGH
             and not risk.veto
             and evidence_completeness >= 0.75
+            and not blocking_conflicts
         ):
             recommendation = Recommendation.BUY
         elif risk.veto or (risk.risk_level == RiskLevel.HIGH and Signal.SELL in (technical.signal, fundamental.signal)):
@@ -557,9 +604,11 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             Recommendation.AVOID: "TRÁNH",
         }[recommendation]
 
-        base_confidence = (technical.confidence + fundamental.confidence + max(0.1, 1 - risk.risk_score / 10)) / 3
+        # Confidence describes support for this assessment, not the chance of a
+        # return. High measured risk can be assessed with high confidence.
+        base_confidence = (technical.confidence + fundamental.confidence + risk.confidence) / 3
         confidence = max(
-            0.15,
+            0.0,
             min(0.9, (base_confidence - 0.05 * len(conflicts)) * (0.55 + 0.45 * evidence_completeness)),
         )
         evidence = [
@@ -580,9 +629,12 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             final_reasoning=(
                 f"Manager đã tổng hợp bằng chứng độc lập từ các chuyên gia sau {state.iteration} vòng phân tích lại. "
                 f"Các giới hạn rủi ro và yếu tố chưa chắc chắn dẫn đến kết luận {recommendation_label}."
+                + (f" Có {len(blocking_conflicts)} giới hạn dữ liệu, thời gian hoặc chính sách quan trọng chưa cho phép kết luận MUA."
+                   if blocking_conflicts else "")
             ),
             evidence=evidence,
             evidence_completeness=evidence_completeness,
+            policy_version="synthesis-v3-conflict-gated",
         )
         return {
             "final_decision": final,
@@ -594,7 +646,7 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
             "completed_tasks": ["final_decision"],
             "agent_reports": [self.report(
                 stage="final_synthesis",
-                status="PARTIAL" if evidence_completeness < 0.75 else "COMPLETED",
+                status="PARTIAL" if evidence_completeness < 0.75 or evidence_limits else "COMPLETED",
                 summary=(
                     f"Produced {recommendation.value} with evidence completeness "
                     f"{evidence_completeness:.0%}."
@@ -603,10 +655,10 @@ kiểm tra quyền thực thi. Trả đúng JSON schema và không thêm nội d
                 output_key="final_decision",
                 tools_used=[],
                 assumptions=["Specialist scores and vetoes are authoritative inputs"],
-                missing_information=(
-                    ["Evidence completeness is below the BUY threshold"]
-                    if evidence_completeness < 0.75 else []
-                ),
+                missing_information=[
+                    *(["Evidence completeness is below the BUY threshold"] if evidence_completeness < 0.75 else []),
+                    *(item.detail for item in evidence_limits),
+                ],
                 evidence_count=len(evidence),
             )],
         }

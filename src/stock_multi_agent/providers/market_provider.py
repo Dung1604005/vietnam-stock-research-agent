@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import math
 import re
 import os
@@ -28,6 +29,7 @@ from stock_multi_agent.models.data import (
 from stock_multi_agent.providers.data_store import MarketDataCache, RawSnapshotStore, SQLiteMarketDataCache
 from stock_multi_agent.providers.resilience import ProviderHealth, ResiliencePolicy, ResilientExecutor
 from stock_multi_agent.services.data_quality import DataQualityChecker
+from stock_multi_agent.services.request_telemetry import BudgetExceeded, check_deadline, remaining_seconds
 
 
 def _env_number(name: str, default: int | float, cast):
@@ -91,6 +93,7 @@ class VnstockMarketDataProvider:
         self.last_error: str | None = None
 
     def get_market_data(self, ticker: str, include_financials: bool = True) -> MarketData:
+        check_deadline()
         symbol = ticker.strip().upper()
         if not re.fullmatch(r"[A-Z][A-Z0-9]{1,9}", symbol):
             raise MarketDataError(f"Mã cổ phiếu không hợp lệ: {ticker!r}")
@@ -106,6 +109,7 @@ class VnstockMarketDataProvider:
                 if metrics:
                     metrics.cache_hits += 1
                 result = self._apply_quality(cached, include_financials)
+                check_deadline()
                 result.access_mode = 'CACHE'
                 self.last_success_at = datetime.now(timezone.utc)
                 return result
@@ -129,6 +133,7 @@ class VnstockMarketDataProvider:
         frame: Any | None = None
         for candidate_source in self._price_sources():
             try:
+                check_deadline()
                 quote = Quote(source=candidate_source, symbol=symbol, show_log=False)
                 quote_parameters = {
                     "source": candidate_source,
@@ -138,10 +143,12 @@ class VnstockMarketDataProvider:
                     "interval": "1D",
                 }
                 frame = self.executor.run(
-                    lambda quote=quote: quote.history(start=start.isoformat(), end=end.isoformat(), interval="1D")
+                    lambda quote=quote: self._call_upstream(quote.history, start=start.isoformat(), end=end.isoformat(), interval="1D")
                 )
                 quote_source = candidate_source
                 break
+            except BudgetExceeded:
+                raise
             except Exception as exc:
                 quote_errors.append(f"{candidate_source}: {str(exc)[:240]}")
 
@@ -192,6 +199,8 @@ class VnstockMarketDataProvider:
                 instrument, company_name, profile_ref = self._fetch_company_profile(symbol, fetched_at)
                 if profile_ref is not None:
                     source_refs.append(profile_ref)
+            except BudgetExceeded:
+                raise
             except Exception as exc:
                 warnings.append(f"Company profile unavailable: {exc}")
 
@@ -202,6 +211,8 @@ class VnstockMarketDataProvider:
                 issuer_events, corporate_actions, event_ref = self._fetch_issuer_events(symbol, fetched_at)
                 if event_ref is not None:
                     source_refs.append(event_ref)
+            except BudgetExceeded:
+                raise
             except Exception as exc:
                 warnings.append(f"Issuer events unavailable: {exc}")
 
@@ -211,6 +222,7 @@ class VnstockMarketDataProvider:
         if include_financials:
             finance: Any | None = None
             try:
+                check_deadline()
                 ratio_parameters = {"symbol": symbol, "period": "year", "lang": "en", "dropna": True}
                 finance = Finance(
                     source=self.source,
@@ -220,7 +232,7 @@ class VnstockMarketDataProvider:
                     show_log=False,
                 )
                 ratio_frame = self.executor.run(
-                    lambda: finance.ratio(period="year", lang="en", dropna=True, show_log=False)
+                    lambda: self._call_upstream(finance.ratio, period="year", lang="en", dropna=True, show_log=False)
                 )
                 financial_source_id = f"{self.source}:Finance.ratio:{symbol}"
                 financials, observations = self._normalize_ratios_with_observations(ratio_frame, financial_source_id)
@@ -244,6 +256,8 @@ class VnstockMarketDataProvider:
                     content_sha256=ratio_digest,
                     snapshot_id=ratio_snapshot,
                 ))
+            except BudgetExceeded:
+                raise
             except Exception as exc:
                 warnings.append(f"Không tải được đầy đủ chỉ số tài chính: {exc}")
 
@@ -251,6 +265,8 @@ class VnstockMarketDataProvider:
                 try:
                     statement_observations, statement_refs = self._fetch_statement_series(finance, symbol, fetched_at)
                     source_refs.extend(statement_refs)
+                except BudgetExceeded:
+                    raise
                 except Exception as exc:
                     warnings.append(f"Financial statement series unavailable: {exc}")
 
@@ -277,6 +293,7 @@ class VnstockMarketDataProvider:
             warnings=warnings,
         )
         data = self._apply_quality(data, include_financials)
+        check_deadline()
         if self.cache is not None:
             self.cache.set(cache_key, data, self.cache_ttl_seconds)
         self.last_success_at = datetime.now(timezone.utc)
@@ -285,12 +302,43 @@ class VnstockMarketDataProvider:
 
     def refresh_market_data(self, ticker: str, include_financials: bool = True) -> MarketData:
         """Bypass only this instrument's cache before one bounded recovery attempt."""
+        check_deadline()
         symbol = ticker.strip().upper()
         from stock_multi_agent.services.execution_profiles import assert_external_allowed
         assert_external_allowed('market_provider.refresh')
         if self.cache is not None:
             self.cache.delete(self._cache_key(symbol, include_financials))
         return self.get_market_data(symbol, include_financials=include_financials)
+
+    @staticmethod
+    def _call_upstream(method, **parameters):
+        """Clamp timeouts only when the adapter explicitly supports one.
+
+        Current vnstock explorers do not expose a per-call transport timeout.
+        Their calls are cooperative: check before/after, with no detached worker.
+        Inspect the actual explorer too because vnstock filters adapter kwargs.
+        """
+        check_deadline()
+        remaining = remaining_seconds()
+        if remaining is not None:
+            target = method
+            owner = getattr(method, '__self__', None)
+            provider = getattr(owner, '_provider', None) if owner is not None else None
+            if provider is not None:
+                target = getattr(provider, method.__name__, method)
+            try:
+                accepted = inspect.signature(target).parameters
+            except (TypeError, ValueError):
+                accepted = {}
+            for timeout_name in ('timeout_seconds', 'timeout'):
+                if timeout_name in accepted:
+                    configured = _env_number('STOCK_AGENT_PROVIDER_TIMEOUT_SECONDS', 20.0, float)
+                    existing = parameters.get(timeout_name, configured)
+                    parameters[timeout_name] = min(float(existing), remaining)
+                    break
+        result = method(**parameters)
+        check_deadline()
+        return result
 
     def health(self) -> dict[str, Any]:
         """In-process operational state for probes, CLI reporting and tests.
@@ -435,7 +483,7 @@ class VnstockMarketDataProvider:
         """Attach only profile fields explicitly returned by the provider."""
         from vnstock.api.company import Company
 
-        frame = self.executor.run(lambda: Company(symbol=ticker, source=self.source).overview())
+        frame = self.executor.run(lambda: self._call_upstream(Company(symbol=ticker, source=self.source).overview))
         if not isinstance(frame, pd.DataFrame) or frame.empty:
             return Instrument(ticker=ticker), None, None
         record = frame.iloc[0]
@@ -473,7 +521,7 @@ class VnstockMarketDataProvider:
         """Normalise only explicit VCI issuer-event records and retain the raw snapshot."""
         from vnstock.api.company import Company
 
-        frame = self.executor.run(lambda: Company(symbol=ticker, source=self.source, show_log=False).events())
+        frame = self.executor.run(lambda: self._call_upstream(Company(symbol=ticker, source=self.source, show_log=False).events))
         if not isinstance(frame, pd.DataFrame) or frame.empty:
             return [], [], None
         source_id = f"{self.source}:Company.events:{ticker}"
@@ -542,8 +590,10 @@ class VnstockMarketDataProvider:
                 parameters = {"symbol": ticker, "period": frequency, "lang": "en", "dropna": True}
                 try:
                     frame = self.executor.run(
-                        lambda method=method, frequency=frequency: method(period=frequency, lang="en", dropna=True, show_log=False)
+                        lambda method=method, frequency=frequency: self._call_upstream(method, period=frequency, lang="en", dropna=True, show_log=False)
                     )
+                except BudgetExceeded:
+                    raise
                 except Exception:
                     continue
                 source_id = f"{self.source}:Finance.{statement}:{frequency}:{ticker}"

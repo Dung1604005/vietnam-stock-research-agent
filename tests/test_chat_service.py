@@ -112,7 +112,7 @@ def test_required_demo_conversation_keeps_context(chat_service: ChatService) -> 
     assert technical.tickers == ["FPT"]
     assert technical.metadata["routing_plan"] == ["DATA", "TECHNICAL"]
     called_tools = [event.tool for event in technical.agent_trace if event.tool]
-    assert called_tools == ["get_stock_data", "RSI"]
+    assert called_tools == ["get_stock_data", "price_forecast", "RSI"]
 
     comparison = chat_service.handle("So với CMG?", conversation)
     assert comparison.response_type is ResponseType.COMPARISON

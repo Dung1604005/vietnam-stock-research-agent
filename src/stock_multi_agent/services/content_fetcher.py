@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from stock_multi_agent.models.research import FetchedDocument
-from stock_multi_agent.services.request_telemetry import observed
+from stock_multi_agent.services.request_telemetry import bounded_timeout, check_deadline, observed
 
 
 class ContentFetchError(RuntimeError):
@@ -61,10 +61,12 @@ class SafeContentFetcher:
         requested_url = current_url
 
         for _ in range(self.max_redirects + 1):
+            check_deadline()
             self._validate_public_https_url(current_url)
             if self.url_guard is not None:
                 self.url_guard(current_url)
-            status, headers, payload = self._open_once(current_url, timeout, byte_limit)
+            status, headers, payload = self._open_once(current_url, bounded_timeout(timeout), byte_limit)
+            check_deadline()
             if status in {301, 302, 303, 307, 308}:
                 location = headers.get("Location")
                 if not location:
@@ -98,20 +100,23 @@ class SafeContentFetcher:
             )
         raise ContentFetchError(f"Source exceeded the redirect limit ({self.max_redirects}).")
 
-    def _open_once(self, source_url: str, timeout: int, byte_limit: int) -> tuple[int, Any, bytes]:
+    def _open_once(self, source_url: str, timeout: float, byte_limit: int) -> tuple[int, Any, bytes]:
         request = Request(source_url, headers={"User-Agent": "StockResearchAssistant/0.1 (research retrieval)", **self.request_headers})
         opener = build_opener(_NoRedirect(), HTTPSHandler(context=self._ssl_context()))
         try:
-            with opener.open(request, timeout=timeout) as response:
+            with opener.open(request, timeout=bounded_timeout(timeout)) as response:
                 payload = response.read(byte_limit + 1)
+                check_deadline()
                 if len(payload) > byte_limit:
                     raise ContentFetchError(f"Source exceeds the {byte_limit} byte safety limit.")
                 return response.status, response.headers, payload
         except HTTPError as exc:
+            check_deadline()
             if exc.code in {301, 302, 303, 304, 307, 308}:
                 return exc.code, exc.headers, b""
             raise ContentFetchError(f"Source returned HTTP {exc.code}.", exc.code) from exc
         except (OSError, URLError) as exc:
+            check_deadline()
             raise ContentFetchError("Unable to retrieve the source.") from exc
 
     @staticmethod
@@ -132,8 +137,11 @@ class SafeContentFetcher:
         if hostname == "localhost" or hostname.endswith(".local"):
             raise ContentFetchError("Local network URLs are not allowed.")
         try:
+            check_deadline()
             addresses = self.resolver(hostname)
+            check_deadline()
         except OSError as exc:
+            check_deadline()
             raise ContentFetchError("Could not resolve source hostname.") from exc
         if not addresses:
             raise ContentFetchError("Source hostname resolved to no addresses.")

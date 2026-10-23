@@ -197,6 +197,10 @@ class RecommendationService:
         data = state.market_data
         if not all((technical, fundamental, risk, final, data)):
             return None
+        if (risk.assessment_status == 'UNAVAILABLE'
+            or Signal.UNKNOWN in {technical.signal, fundamental.signal}
+            or min(technical.confidence, fundamental.confidence, risk.confidence) < 0.5):
+            return None
         if risk.veto or final.recommendation is Recommendation.AVOID:
             return None
         volatility_value = technical.diagnostics.get("annualized_volatility", 0.0)
@@ -253,6 +257,11 @@ class RecommendationService:
         final = state.final_decision
         data = state.market_data
         if not all((technical, fundamental, risk, final, data)):
+            return None
+        if risk.assessment_status == 'UNAVAILABLE' or any(
+            item.error_type and item.agent.value in {'technical', 'fundamental', 'risk'}
+            for item in state.task_executions
+        ):
             return None
         volatility_value = technical.diagnostics.get("annualized_volatility", 0.0)
         volatility = float(volatility_value) if isinstance(volatility_value, (int, float)) else 0.0

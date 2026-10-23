@@ -1,5 +1,7 @@
 # Phase E — Screening and Comparison
 
+> Reviewed 23/10/2026: screening date tolerance below reflects current code. Explicit ComparisonSpec still applies its own stricter field-alignment policy; do not infer comparison rules from screening defaults.
+
 ## Status
 
 E2 is implemented for **current-data screening and comparison**. It is deliberately not presented as a historical screener, a backtest, a complete fundamental ranking system, or investment advice.
@@ -20,7 +22,7 @@ Each candidate is visible as one of:
 
 `VnstockInstrumentUniverseProvider` fetches the real current VCI listing catalogue through vnstock's `Listing.symbols_by_exchange` endpoint. It accepts only records labelled `STOCK` on an active board (`HSX`/`HOSE`, `HNX`, `UPCOM`), explicitly excludes VCI's `DELISTED` board, normalizes ticker/name/exchange/currency, and stores:
 
-- an immutable raw capture in `D:\Download\thầy quế\Agent\.runtime\snapshots`;
+- an immutable raw capture in `.runtime/snapshots inside the actual D-drive workspace`;
 - provider source URL, request parameters, SHA-256, snapshot ID and retrieval timestamp in `SourceReference`;
 - a short-lived convenience cache at `.runtime/cache/current_instrument_universe_v2.json` (default 24 hours).
 
@@ -37,7 +39,7 @@ Any `ScreenSpec.as_of` request is rejected before results are generated. This pr
 
 ## Ranking and comparison guards
 
-Technical scores are only ranked when all usable symbols have exactly the same price `as_of` date. If dates differ or are missing, the screen shows the affected result as `UNAVAILABLE`, attaches an explicit warning, and withholds the ranking. The response exposes universe size, evaluated count, ranks, `as_of`, source IDs, policy version and the universe capture time.
+ScreenSpec distinguishes exact date alignment from tolerated comparability. Default max_price_as_of_lag_days is 3; stale/missing-date candidates can be refreshed once when refresh_stale_data is enabled, then only affected unusable candidates are withheld. A comparable ranking does not imply all dates are identical. Recommendation quick screening disables mass refresh and refreshes stale shortlisted symbols in deep analysis. The response exposes universe size, evaluated count, ranks, `as_of`, source IDs, policy version and the universe capture time.
 
 `ComparisonSpec` version `comparison-v1` independently checks currency, price `as_of` and financial reporting period. The comparison response exposes price date and financial period per ticker. It withholds the technical or fundamental score field when its relevant alignment fails, instead of comparing mismatched figures.
 

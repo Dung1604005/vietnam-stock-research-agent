@@ -28,6 +28,9 @@ class BaseAgent:
         payload: dict[str, Any] | None = None,
         confidence: float | None = None,
     ) -> AgentMessage:
+        from stock_multi_agent.services.agent_execution import current_execution
+        from uuid import uuid4
+        context = current_execution()
         return AgentMessage(
             sender=self.name,
             receiver=receiver,
@@ -35,6 +38,9 @@ class BaseAgent:
             task=task,
             payload=payload or {},
             confidence=confidence,
+            **({'run_id': context.run_id, 'task_id': str(uuid4()) if message_type in {MessageType.TASK, MessageType.REQUEST_REANALYSIS} else context.task_id,
+                'reply_to': context.reply_to, 'input_fingerprint': context.input_fingerprint}
+               if context else {}),
         )
 
     def event(self, phase: str, action: str, detail: str, tool: str | None = None) -> TraceEvent:

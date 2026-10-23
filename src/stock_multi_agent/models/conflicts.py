@@ -32,3 +32,14 @@ class ConflictRecord(BaseModel):
     detail: str
     suggested_action: ReanalysisAction = ReanalysisAction.NONE
     dimension: Literal['data', 'time', 'metric', 'interpretation', 'policy'] = 'interpretation'
+    severity: Literal['WARNING', 'ERROR'] = 'ERROR'
+    resolved: bool = False
+
+    @property
+    def blocks_buy(self) -> bool:
+        """Interpretive disagreement may coexist with an actionable assessment."""
+        return (
+            not self.resolved
+            and self.severity == 'ERROR'
+            and self.dimension in {'data', 'time', 'metric', 'policy'}
+        )

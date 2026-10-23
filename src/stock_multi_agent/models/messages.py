@@ -36,6 +36,10 @@ class AgentMessage(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    run_id: str | None = None
+    task_id: str | None = None
+    reply_to: UUID | None = None
+    input_fingerprint: str | None = None
 
     @field_validator("timestamp")
     @classmethod

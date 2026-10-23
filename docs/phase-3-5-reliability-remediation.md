@@ -1,5 +1,7 @@
 # Kế hoạch khắc phục các hạn chế Phase 3–5
 
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
 Phạm vi: nâng cấp demo nghiên cứu, không giao dịch tự động; không thêm dịch vụ trả phí. Colab hiện có phục vụ LLM. Không coi kiểm thử phần mềm là bằng chứng mô hình dự báo có lợi nhuận.
 
 ## Thứ tự và tiêu chí nghiệm thu

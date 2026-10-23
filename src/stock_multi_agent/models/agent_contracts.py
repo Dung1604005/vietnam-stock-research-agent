@@ -42,18 +42,29 @@ class AgentExecutionReport(BaseModel):
 
 
 class AgentEvaluationSummary(BaseModel):
-    """Small, machine-readable quality gate for one pipeline execution."""
+    """Execution coverage and analytical sufficiency, not predictive accuracy.
+
+    Legacy ``passed`` and ``overall_score`` now require analytical support too.
+    Consumers that only need orchestration health should use execution fields.
+    """
 
     expected_agents: list[AgentName] = Field(default_factory=list)
     executed_agents: list[AgentName] = Field(default_factory=list)
     missing_agents: list[AgentName] = Field(default_factory=list)
     missing_outputs: list[str] = Field(default_factory=list)
     low_confidence_agents: list[AgentName] = Field(default_factory=list)
+    unavailable_agents: list[AgentName] = Field(default_factory=list)
+    insufficient_agents: list[AgentName] = Field(default_factory=list)
+    analytical_issues: list[str] = Field(default_factory=list)
     contract_coverage: float = Field(ge=0.0, le=1.0)
     output_coverage: float = Field(ge=0.0, le=1.0)
     evidence_coverage: float = Field(ge=0.0, le=1.0)
     overall_score: float = Field(ge=0.0, le=1.0)
     passed: bool
+    execution_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    execution_passed: bool = False
+    analytical_sufficiency: float = Field(default=0.0, ge=0.0, le=1.0)
+    analytical_passed: bool = False
 
 
 class DataAgentContext(BaseModel):

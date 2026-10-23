@@ -1,6 +1,8 @@
 # Crawler và auto-ingestion — triển khai và sử dụng
 
-Pipeline C0–C4 đã có code: discovery theo nguồn → hàng đợi SQLite → policy/metadata → ingest tăng dần → FTS/vector RAG. Windows Task Scheduler được cài với tên `VietnamStockResearchSync`, chạy mỗi ngày lúc **09:00 giờ máy**, bằng `.venv\Scripts\pythonw.exe` trên ổ D. Task dùng tài khoản hiện tại và chỉ chạy khi tài khoản có phiên đăng nhập; máy cần có mạng. Nếu bỏ lỡ lịch, `StartWhenAvailable` cho phép chạy bù.
+> Phạm vi báo cáo: số test, latency, corpus và smoke test ghi trong tài liệu là kết quả của lượt triển khai lịch sử, không phải tổng mới ngày 23/10/2026. Trạng thái/code và kiểm chứng mới được tổng hợp tại [project-report.md](project-report.md).
+
+Pipeline C0–C4 đã có code: discovery theo nguồn → hàng đợi SQLite → policy/metadata → ingest tăng dần → FTS/vector RAG. Script hỗ trợ cài Windows Task Scheduler tên `VietnamStockResearchSync`, mặc định **09:00 giờ máy**, dùng `.venv\Scripts\pythonw.exe` trên ổ D. Lượt triển khai trước đã ghi nhận cài task; audit code 23/10/2026 không xác minh lại trạng thái task trên máy. Task dùng tài khoản hiện tại và chỉ chạy khi tài khoản có phiên đăng nhập; máy cần có mạng. Nếu bỏ lỡ lịch, `StartWhenAvailable` cho phép chạy bù.
 
 Kiểm tra năm/quý, độ mới và lựa chọn tài liệu hiện tại/lịch sử: [research-data-freshness.md](research-data-freshness.md).
 
@@ -62,7 +64,7 @@ CLI cũng hỗ trợ `--candidate ID --action approve --note "cơ sở quyền s
 
 ## Lịch chạy Windows
 
-Đã tạo task; không cần chạy lệnh cài lại. Kiểm tra hoặc chạy ngay:
+Kiểm tra task có tồn tại và đường dẫn còn đúng trước khi chạy hoặc quyết định cài lại:
 
 ```powershell
 Get-ScheduledTask -TaskName VietnamStockResearchSync

@@ -45,13 +45,14 @@ def test_manager_refuses_unknown_source_future_period_and_low_budget():
 
 def graph_fixture(new_data, *, fail=False):
     class Data:
+        name = AgentName.DATA
         def run(self, state, refresh=False):
             if fail: raise RuntimeError('provider failed')
             return {'market_data': new_data}
     return SimpleNamespace(manager_agent=ManagerAgent(), data_agent=Data(),
-        technical_agent=SimpleNamespace(run=lambda *a, **k: {'completed_tasks': ['technical_recomputed']}),
-        fundamental_agent=SimpleNamespace(run=lambda *a, **k: {'completed_tasks': ['fundamental_recomputed']}),
-        risk_agent=SimpleNamespace(run=lambda *a, **k: {'completed_tasks': ['risk_recomputed']}),
+        technical_agent=SimpleNamespace(name=AgentName.TECHNICAL, run=lambda *a, **k: {'completed_tasks': ['technical_recomputed']}),
+        fundamental_agent=SimpleNamespace(name=AgentName.FUNDAMENTAL, run=lambda *a, **k: {'completed_tasks': ['fundamental_recomputed']}),
+        risk_agent=SimpleNamespace(name=AgentName.RISK, run=lambda *a, **k: {'completed_tasks': ['risk_recomputed']}),
         _forecast=lambda *a: {}, _specialist_reviews=lambda *a: {})
 
 

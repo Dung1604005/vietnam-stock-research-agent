@@ -206,7 +206,7 @@ def test_session_rebuilds_on_model_switch_and_preserves_conversations():
         'selected_lstm': 'v2', 'ChatService': lambda **kwargs: SimpleNamespace(**kwargs),
         'AnalysisService': lambda **kwargs: SimpleNamespace(**kwargs),
         'PriceForecastService': SimpleNamespace(from_environment=forecast),
-        'InMemoryConversationStore': lambda values: values}
+        'SQLiteConversationStore': lambda values: values}
     # Future annotations avoid evaluating production return types in this fixture.
     exec(compile(ast.fix_missing_locations(ast.Module(body=[ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0), fn], type_ignores=[])), '<ui-initialize>', 'exec'), namespace)
     first, _ = namespace['initialize_session']()
@@ -214,5 +214,5 @@ def test_session_rebuilds_on_model_switch_and_preserves_conversations():
     namespace['selected_lstm'] = 'v4'
     second, _ = namespace['initialize_session']()
     assert second is not first and session.conversations == {'kept': 'history'}
-    assert constructed == [{'default_enabled': True, 'model_version': 'v2', 'experimental_blend': False},
-                           {'default_enabled': True, 'model_version': 'v4', 'experimental_blend': True}]
+    assert constructed == [{'default_enabled': True, 'model_version': 'v2', 'experimental_blend': False, 'defer_load': True},
+                           {'default_enabled': True, 'model_version': 'v4', 'experimental_blend': True, 'defer_load': True}]

@@ -1,8 +1,8 @@
 # LSTM training on Kaggle
 
-New experiment: [LSTM V4 research and training](lstm-v4-research-and-training.md), with [self-contained Kaggle notebook](../notebooks/train_lstm_kaggle_v4_ready.ipynb). It reuses the V3 CSV/manifest without additional ZIP uploads; V2/V3 remain unchanged. V4 market-data GPU performance is not yet measured.
+New experiment: [LSTM V4 research and training](lstm-v4-research-and-training.md), with [self-contained Kaggle notebook](../notebooks/train_lstm_kaggle_v4_ready.ipynb). It reuses the V3 CSV/manifest without additional ZIP uploads; V2/V3 remain unchanged. Historical V4 GPU development results are recorded in the linked review; forward validation remains pending.
 
-Update 18/10/2026: V2 remains the frozen default. A **separate V3 experiment**, new dataset and notebooks are now available; see [Phase 6–8 handoff](phase-6-8-implementation.md) and [V3 model card](lstm-v3-model-card.md). No V3 GPU training or promotion is claimed. The V2 instructions below remain for reproduction/rollback.
+Update 18/10/2026: V2 remains the frozen default. A **separate V3 experiment**, new dataset and notebooks are now available; see [Phase 6–8 handoff](phase-6-8-implementation.md) and [V3 model card](lstm-v3-model-card.md). V3 GPU artifacts have since been reviewed without promotion; see the V3 model card for the later status. The V2 instructions below remain for reproduction/rollback.
 
 ## Dataset
 
@@ -56,7 +56,7 @@ Single-ticker application requests cannot reproduce V2's cross-sectional median-
 
 ## Leakage-aware experiment v4
 
-The newer V4 pipeline is documented in [lstm-kaggle-v4.md](lstm-kaggle-v4.md). It preserves V2/V3, performs a validation-only four-configuration sweep, adds five-session embargoes, generates windows by batch, evaluates stronger baselines and applies a stricter statistical eligibility gate. Run `notebooks/train_lstm_kaggle_v4.ipynb` directly on Kaggle; do not use the test output to tune another V4 run.
+The earlier V4 pipeline is documented in [lstm-kaggle-v4.md](lstm-kaggle-v4.md). It preserves V2/V3, performs a validation-only four-configuration sweep, adds five-session embargoes, generates windows by batch, evaluates stronger baselines and applies a stricter statistical eligibility gate. The current self-contained entry point is `notebooks/train_lstm_kaggle_v4_ready.ipynb`; its later development changes/status are in [the V4 review](lstm-v4-research-and-training.md). Do not use test output to tune another run.
 
 After the first V4 result was inspected, the follow-up [V4.1 development experiment](lstm-kaggle-v4-1.md) was frozen as separate code and artifact names. It retains valid context rows, filters only prediction endpoints, returns to direct-return targets and reduces the auxiliary classification weight. Its current holdout is explicitly marked as reused; it cannot become integration-eligible until confirmed on newly collected dates.
 

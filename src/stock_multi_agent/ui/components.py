@@ -136,11 +136,17 @@ def render_analysis_card(response: AssistantResponse) -> None:
     metadata = response.metadata
     items: list[tuple[str, str]] = []
     if "technical_score" in metadata:
-        items.append(("Technical", f"{metadata['technical_score']:.1f}/10 · {metadata.get('technical_signal', '')}"))
+        value = metadata['technical_score']
+        items.append(("Technical", 'CHƯA ĐÁNH GIÁ' if value is None or metadata.get('technical_signal') == 'UNKNOWN'
+                      else f"{value:.1f}/10 · {metadata.get('technical_signal', '')}"))
     if "fundamental_score" in metadata:
-        items.append(("Fundamental", f"{metadata['fundamental_score']:.1f}/10 · {metadata.get('fundamental_signal', '')}"))
+        value = metadata['fundamental_score']
+        items.append(("Fundamental", 'CHƯA ĐÁNH GIÁ' if value is None or metadata.get('fundamental_signal') == 'UNKNOWN'
+                      else f"{value:.1f}/10 · {metadata.get('fundamental_signal', '')}"))
     if "risk_score" in metadata:
-        items.append(("Risk", f"{metadata['risk_score']:.1f}/10 · {metadata.get('risk_level', '')}"))
+        value = metadata['risk_score']
+        items.append(("Risk", 'CHƯA ĐÁNH GIÁ' if value is None or metadata.get('risk_assessment_status') == 'UNAVAILABLE'
+                      else f"{value:.1f}/10 · {metadata.get('risk_level', '')}"))
     if "data_uncertainty_score" in metadata:
         items.append((
             "Data uncertainty",
@@ -201,6 +207,8 @@ def render_agent_status(response: AssistantResponse) -> None:
 
 def render_agent_trace(response: AssistantResponse) -> None:
     with st.expander("View agent activity", expanded=False):
+        if response.metadata.get('analysis_run_id'):
+            st.caption('Analysis run: ' + str(response.metadata['analysis_run_id']))
         route = response.metadata.get("routing_plan", [])
         if route:
             st.caption("Route: " + " → ".join(route))
@@ -208,6 +216,8 @@ def render_agent_trace(response: AssistantResponse) -> None:
         if task_plan:
             st.caption(f"Task budget: {response.metadata.get('task_plan_budget_units', 0)} units")
             st.json(task_plan, expanded=False)
+        if response.metadata.get('task_execution'):
+            st.json(response.metadata['task_execution'], expanded=False)
         for event in response.agent_trace:
             tool = f" · Tool: `{html.escape(event.tool)}`" if event.tool else ""
             st.markdown(
@@ -229,13 +239,15 @@ def render_agent_trace(response: AssistantResponse) -> None:
                 )
         evaluation = response.metadata.get("agent_evaluation")
         if evaluation:
-            st.markdown("##### Agent contract evaluation")
+            st.markdown("##### Agent execution and evidence evaluation")
             st.caption(
-                f"Overall {evaluation['overall_score']:.0%} · "
+                f"Execution coverage {evaluation.get('execution_score', evaluation['overall_score']):.0%} · "
+                f"Analytical sufficiency {evaluation.get('analytical_sufficiency', evaluation['overall_score']):.0%} · "
                 f"contracts {evaluation['contract_coverage']:.0%} · "
                 f"outputs {evaluation['output_coverage']:.0%} · "
                 f"evidence {evaluation['evidence_coverage']:.0%}"
             )
+            st.caption('Coverage and evidence checks; these are not calibrated probabilities of investment success.')
             reports = response.metadata.get("agent_reports", [])
             if reports:
                 st.dataframe(pd.DataFrame([

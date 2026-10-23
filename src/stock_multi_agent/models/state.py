@@ -3,6 +3,7 @@ from __future__ import annotations
 import operator
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,6 +22,7 @@ from stock_multi_agent.models.messages import AgentMessage, AgentName
 from stock_multi_agent.models.llm import AgentLLMReview
 from stock_multi_agent.models.research import Citation
 from stock_multi_agent.models.research_contracts import RequestBudget
+from stock_multi_agent.models.execution_profile import ExecutionProfile
 
 
 class TraceEvent(BaseModel):
@@ -32,10 +34,28 @@ class TraceEvent(BaseModel):
     tool: str | None = None
 
 
+class TaskExecution(BaseModel):
+    run_id: str
+    task_id: str
+    node: str
+    agent: AgentName
+    attempt: int = Field(default=1, ge=1)
+    input_fingerprint: str
+    status: str = Field(pattern=r'^(COMPLETED|PARTIAL|UNAVAILABLE)$')
+    output_keys: list[str] = Field(default_factory=list)
+    error_type: str | None = None
+    completed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AgentState(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     ticker: str
+    run_id: str = Field(default_factory=lambda: str(uuid4()))
+    workflow_version: str = 'analysis-run-v1'
+    execution_mode: str = 'STANDARD'
+    execution_profile: ExecutionProfile | None = None
+    task_executions: Annotated[list[TaskExecution], operator.add] = Field(default_factory=list)
     request_budget: RequestBudget = Field(default_factory=RequestBudget)
     investment_horizon: str
     user_goal: str

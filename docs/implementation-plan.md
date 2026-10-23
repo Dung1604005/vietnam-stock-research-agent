@@ -1,90 +1,47 @@
-# Implementation plan
+# Implementation baseline and remaining work
 
-## Requirements
+Updated 23/10/2026 against the working tree. The original five-role MVP plan has
+been superseded by the implemented six-role architecture, including Research.
+Historical phase plans remain linked in [the document register](README.md).
 
-Build an educational, non-trading MVP with exactly five specialized agents. It must expose goals, observations, tool use, concise reasoning summaries, typed communication, shared memory, conflict, criticism, supervision, conditional re-analysis, and a finite Observe → Reason → Plan → Act loop. The user-facing flow accepts any valid Vietnamese ticker and uses current market data rather than canned analysis.
+## Implemented baseline
 
-## Architecture and responsibilities
+- Six classes: Data, Research, Technical, Fundamental, Risk and Manager, each with AgentSpec and execution report.
+- Dependency-injected providers/tools, Pydantic contexts/results, typed messages and role-scoped output validation.
+- Full LangGraph with forecast/research, parallel specialists, Risk join, three re-analysis paths, optional evidence review/follow-up and deterministic finalization.
+- Hybrid Vietnamese NLU, validated executable task plans, selective routes, comparison, bounded discovery/recommendation and charts.
+- Market provenance/cache/raw snapshots/quality gates; research vector+FTS, HTML/text-layer PDF, versioned documents and policy-controlled crawler ingestion.
+- KnowledgeService and graph projections; optional structured LLM tasks with evidence and numeric guards.
+- STANDARD/QUICK/DEEP/OFFLINE budgets, partial results, local checkpoints/resume, SQLite conversations, replay and sanitized exports.
 
-- **Data Agent** validates and normalizes OHLCV and company metrics. It never recommends a trade.
-- **Technical Agent** observes price/volume, selects indicators for the current horizon, calls indicator tools, and returns a typed signal.
-- **Fundamental Agent** independently scores growth, quality, valuation, leverage, and cash flow.
-- **Risk/Critic Agent** challenges both analyses, measures volatility/drawdown/disagreement, warns, and may veto.
-- **Manager Agent** turns the user goal into a plan, delegates, detects conflict, requests bounded re-analysis, and makes the educational final decision.
+The graph and route details are maintained in [architecture.md](architecture.md);
+the current status and evidence are in [project-report.md](project-report.md).
 
-Dependencies are injected into agents. Providers acquire data or text; tools perform capabilities; agents decide when to use them; LangGraph owns orchestration.
+## Code responsibilities
 
-## State model
+| Location under src/stock_multi_agent | Responsibility |
+|---|---|
+| agents/ | Six bounded role policies; numeric scoring belongs here/Python helpers |
+| graph/ | Full-analysis orchestration and bounded cycles |
+| models/ | Pydantic contracts, state, messages, evidence, budgets |
+| providers/ | Real vnstock integration, LLM adapters, resilience, offline replay |
+| tools/ | Market-data wrapper and shared indicator/financial capabilities |
+| services/ | Application APIs, execution, persistence, retrieval, forecasts, charts, evaluations |
+| chat/, nlu/, ui/ | Routing/context/language interpretation, response and rendering |
 
-`AgentState` contains the request, normalized market/financial data, specialist results, messages, trace events, plan, completed tasks, iteration counters, routing flags, and final decision. Append-only fields use reducers so independent graph branches can merge safely.
+`FinancialToolkit` supplies completeness/format helpers; financial scoring and
+canonical facts are implemented in FundamentalAgent/services, not exclusively in
+the toolkit. vnstock is a core dependency in pyproject.toml; OpenAI, TensorFlow,
+pypdf and sentence-transformers are optional extras. Test-only providers and
+explicit private replay have different purposes from live-data fallback.
 
-## Message model
+## Remaining acceptance work
 
-`AgentMessage` has `sender`, `receiver`, `message_type`, `task`, typed JSON-compatible `payload`, optional `confidence`, and timezone-aware `timestamp`. Message types are `TASK`, `RESULT`, `CRITIQUE`, `REQUEST_REANALYSIS`, `WARNING`, and `FINAL_DECISION`.
+1. Independently review real issuer facts, periods/units, retrieval relevance and claim support.
+2. Validate publication-time and adjusted-price/corporate-action history before point-in-time performance claims.
+3. Measure live upstream/schema reliability and latency on the actual demo machine.
+4. Complete forward validation/model gates; do not promote an artifact from software tests alone.
+5. Add production authentication, user isolation, retention/migration/backup and concurrency evidence before multi-user use.
+6. Keep autonomous background goals/workers separate: [autonomous-agents-plan.md](autonomous-agents-plan.md) is a proposal, not an implemented agent scheduler.
 
-## Tool and provider system
-
-- `MarketDataTool` calls the injected `MarketDataProvider` and validates its result.
-- `TechnicalIndicatorToolkit` owns SMA, EMA, RSI, MACD, Bollinger Bands, volatility, drawdown, support/resistance, and volume analysis.
-- `FinancialToolkit` owns growth and quality scoring helpers.
-- `VnstockMarketDataProvider` is the production/default provider. The integration targets the current vnstock 4.x unified API, validates ticker/data availability, and converts unstable external frames into internal models.
-- Test-only in-memory providers supply deterministic inputs to unit tests; they are not a user-facing analysis mode.
-- `LLMProvider` is a protocol. Colab Qwen, Mock, OpenAI, and legacy Ollama adapters can be swapped without changing graph/agents. Numerical calculations and decision policies remain auditable and deterministic.
-
-## Graph workflow
-
-```mermaid
-flowchart TD
-    U[User goal] --> MP[Manager: plan]
-    MP --> D[Data Agent]
-    D --> DS[Manager: dispatch specialists]
-    DS --> T[Technical Agent]
-    DS --> F[Fundamental Agent]
-    T --> J[Join]
-    F --> J
-    J --> R[Risk / Critic Agent]
-    R --> MR[Manager: review]
-    MR --> C{Conflict and iterations left?}
-    C -->|yes| TR[Technical re-analysis\nextended timeframe]
-    TR --> RR[Risk re-critique]
-    RR --> MR
-    C -->|no| FD[Manager: final decision]
-```
-
-## Conflict handling
-
-Conflict exists when specialist signals differ, Risk is high/vetoes, confidence is low, or data is insufficient. On the first actionable conflict, Manager emits `REQUEST_REANALYSIS` and changes the plan to a longer technical timeframe. `iteration < max_iterations` is required for every loop. Once evidence is refreshed or the bound is reached, Manager finalizes conservatively.
-
-## Technology choices
-
-- Python 3.11+ and Pydantic 2 for readable typed models.
-- LangGraph 1.x for explicit state, fan-out/join, conditional routing, and cycles.
-- pandas/numpy only at provider/tool boundaries.
-- Streamlit for a presentation-friendly trace UI.
-- pytest for unit/integration tests.
-- vnstock 4.x as an optional provider, never as a core dependency.
-
-## Folder structure
-
-```text
-src/stock_multi_agent/
-  agents/       # five roles
-  graph/        # LangGraph workflow and routing
-  models/       # analysis, messages, state
-  providers/    # market and LLM abstractions/adapters
-  services/     # public use-case API
-  tools/        # capabilities with no agent policy
-app/            # Streamlit UI
-tests/          # unit + integration + conflict demo
-docs/           # plan and architecture
-```
-
-## Implementation phases
-
-1. Document architecture and contracts.
-2. Implement models, providers, and tools.
-3. Implement five agents and LangGraph workflow.
-4. Prove the FPT conflict scenario with a test-only deterministic provider.
-5. Integrate and validate the real vnstock provider for arbitrary Vietnamese tickers.
-6. Add Streamlit execution trace.
-7. Run unit/integration tests and document demo steps.
+Project dependencies, caches and test temporary files stay inside the D-drive workspace.

@@ -10,7 +10,7 @@ Cập nhật 18/10/2026:
 | 3 | Đã triển khai KB/KG V2, provenance ledger và projection; Graph-RAG opt-in, chờ relational holdout |
 | 4 | Đã triển khai gateway/role capabilities/validation; chờ kiểm chứng LLM và P95 Colab thực |
 | 5 | Đã triển khai công cụ/chat/report/cache; chờ đo chất lượng và P95 trên data thực |
-| 6 | Đã có builder/dataset V3 riêng, feature parity, walk-forward/baselines/registry/shadow; chưa train GPU hoặc qua forward gate, giữ V2 |
+| 6 | Đã có builder/dataset V3 riêng, feature parity, walk-forward/baselines/registry/shadow; đã có review GPU artifact V3/V4 trong model card riêng; chưa promote V3/qua forward gate, giữ V2 mặc định và V4 experimental opt-in |
 | 7 | Đã có notebook Qwen3-4B QLoRA Colab, curation/grouped splits/A-B/adapter registry; chờ human-reviewed data và GPU training/evaluation |
 | 8 | Đã triển khai Quick/Deep/Offline, progress thật, replay có checksum, audit export và local health; đã kiểm thử offline/UI, chờ rehearsal/latency live |
 
@@ -19,7 +19,7 @@ Chi tiết code, cách chạy và phần chưa nghiệm thu:
 
 Kế hoạch chi tiết Phase 6–8 sau khảo sát bởi ba subagent ChatGPT:
 [phase-6-8-execution-plan.md](phase-6-8-execution-plan.md).
-Code Phase 6–8 đã triển khai; **chưa train hoặc promote model mới**. Notebook dùng `Qwen/Qwen3-4B-Instruct-2507` theo lựa chọn mới, không thay V2. Xem [phase-6-8-implementation.md](phase-6-8-implementation.md) để lấy dataset, chạy Colab và phân biệt các gate còn chờ.
+Code Phase 6–8 đã triển khai; **đã có artifact/review GPU LSTM V3/V4 lịch sử; chưa có promotion mới từ audit này, Qwen adapter vẫn cần gate riêng**. Notebook dùng `Qwen/Qwen3-4B-Instruct-2507` theo lựa chọn mới, không thay V2. Xem [phase-6-8-implementation.md](phase-6-8-implementation.md) để lấy dataset, chạy Colab và phân biệt các gate còn chờ.
 
 ## 1. Mục tiêu và phạm vi
 

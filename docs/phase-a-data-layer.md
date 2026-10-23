@@ -1,5 +1,7 @@
 # Phase A — Reliable Data Layer
 
+> Đối chiếu code 23/10/2026: cập nhật default pacing/retry/deadline và scoring bên dưới. Smoke FPT 09/10 là bằng chứng lịch sử, chưa gọi lại upstream trong lượt audit tài liệu.
+
 ## Trạng thái
 
 Foundation của Phase A đã được triển khai. Production gates còn mở được liệt kê ở cuối tài liệu; hệ thống chưa được tuyên bố production-ready.
@@ -47,9 +49,9 @@ Cache key chứa normalizer schema version, source, ticker, lookback và việc 
 Default policy:
 
 - Cache TTL mặc định: 259200 giây (3 ngày). Recommendation chỉ force-refresh các mã lọt vào phân tích sâu; không tải lại toàn bộ universe trong mỗi prompt.
-- Provider timeout: 20 giây qua `VNSTOCK_TIMEOUT`.
-- Application retry: 3 lần, exponential backoff từ 0.4 giây.
-- Rate limit: pace mỗi upstream attempt (kể cả retry) tối thiểu 0.25 giây; không tạo burst khi upstream lỗi.
+- Provider deadline là cooperative; timeout chỉ được clamp khi method hỗ trợ. `VNSTOCK_TIMEOUT` không bảo đảm mọi vnstock explorer call bị ngắt sau 20 giây.
+- VnstockMarketDataProvider mặc định 1 attempt, cấu hình qua `STOCK_AGENT_PROVIDER_MAX_ATTEMPTS`; nếu bật retry thì backoff từ 0.4 giây. Generic ResiliencePolicy có default 3 nhưng provider ghi đè.
+- Provider mặc định pace mỗi attempt 3.2 giây khi chưa có API key hoặc 1.05 giây khi có key; có thể cấu hình riêng. Generic ResiliencePolicy 0.25 giây không phải default thực tế của provider.
 - Vnstock internal retries: tắt để tránh retry lồng nhau.
 - Circuit breaker: mở sau 5 failed operations, cooldown 60 giây.
 
@@ -71,7 +73,7 @@ Các check hiện có:
 
 Lỗi provenance/chronology/future date làm toàn dataset `FAIL` và provider không trả analysis. Warning vẫn cho phép route không liên quan sử dụng phần data hợp lệ.
 
-Financial scoring bị chặn và trả `UNKNOWN` nếu metrics thiếu reporting period hoặc kỳ mới nhất cũ hơn 550 ngày. Price/technical route vẫn có thể chạy.
+Financial scoring hiện đánh giá coverage/quality của cả ratio và statement: statement còn mới/tương thích được ưu tiên, ratio cũ có thể giảm trọng số, không có metric/statement dùng được thì UNKNOWN. Không mô tả một stale flag là lệnh chặn mọi dữ liệu tài chính. Price/technical route vẫn có thể chạy.
 
 ## Phát hiện từ dữ liệu thật
 
